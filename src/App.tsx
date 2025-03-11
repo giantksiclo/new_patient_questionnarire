@@ -212,12 +212,18 @@ function PatientQuestionnaireTable() {
   }
 
   // 데이터 삭제 함수
-  async function deleteQuestionnaire(id: number | undefined) {
-    console.log('삭제 시도 ID:', id);
+  async function deleteQuestionnaire(residentId: string | undefined) {
+    console.log('삭제 시도 주민등록번호:', residentId);
     
-    if (!id) {
-      console.error('삭제할 데이터의 ID가 없습니다.');
-      setToast({ message: '삭제할 데이터의 ID가 없습니다.', type: 'error' });
+    if (!residentId) {
+      console.error('삭제할 데이터의 주민등록번호가 없습니다.');
+      setToast({ message: '삭제할 데이터의 주민등록번호가 없습니다.', type: 'error' });
+      return;
+    }
+    
+    // 사용자 확인
+    if (!window.confirm(`주민번호 ${residentId}의 데이터를 정말 삭제하시겠습니까?`)) {
+      console.log('사용자가 삭제를 취소했습니다.');
       return;
     }
 
@@ -225,7 +231,7 @@ function PatientQuestionnaireTable() {
       const { error, status } = await supabase
         .from('patient_questionnaire')
         .delete()
-        .eq('id', id);
+        .eq('resident_id', residentId);
       
       console.log('Supabase 응답 상태 코드:', status);
       console.log('삭제 응답:', { error });
@@ -240,9 +246,9 @@ function PatientQuestionnaireTable() {
         throw error;
       }
       
-      console.log('데이터 삭제 성공, ID:', id);
+      console.log('데이터 삭제 성공, 주민등록번호:', residentId);
       // UI 업데이트
-      setQuestionnaires(prev => prev.filter(item => item.id !== id));
+      setQuestionnaires(prev => prev.filter(item => item.resident_id !== residentId));
       setToast({ message: '환자 설문 데이터가 삭제되었습니다.', type: 'success' });
     } catch (error) {
       console.error('데이터 삭제 중 오류 발생:', error);
@@ -279,10 +285,18 @@ function PatientQuestionnaireTable() {
         item.resident_id,
         item.address,
         item.emergency_contact_name,
+        item.emergency_contact_phone,
         item.visit_reason, 
         item.treatment_area,
+        item.referral_source,
+        item.referrer_name,
+        item.referrer_phone,
+        item.medical_conditions,
+        item.allergies,
+        item.medications,
+        item.dental_fears,
         item.additional_info
-      ];
+      ].filter(Boolean);
       
       const searchableText = searchableValues.join(' ').toLowerCase();
       return searchableText.includes(filterText.toLowerCase());
@@ -497,11 +511,11 @@ function PatientQuestionnaireTable() {
                   <tr key={index} className="group hover:bg-accent/50">
                     <td className="sticky left-0 bg-background group-hover:bg-accent/50 text-center">
                       <button
-                        onClick={() => item.id && deleteQuestionnaire(item.id)}
+                        onClick={() => item.resident_id && deleteQuestionnaire(item.resident_id)}
                         className="bg-red-500 hover:bg-red-600 text-white p-1 rounded text-sm"
                         aria-label="삭제"
-                        disabled={!item.id}
-                        title={item.id ? `삭제` : '삭제할 수 없음'}
+                        disabled={!item.resident_id}
+                        title={item.resident_id ? `삭제` : '삭제할 수 없음'}
                       >
                         삭제
                       </button>
