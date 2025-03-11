@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import { ThemeProvider } from './components/ThemeProvider';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -70,27 +70,16 @@ interface PatientQuestionnaire {
 
 function PatientQuestionnaireTable() {
   const [questionnaires, setQuestionnaires] = useState<PatientQuestionnaire[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filterText, setFilterText] = useState('');
   const [sortField, setSortField] = useState<keyof PatientQuestionnaire>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [filterText, setFilterText] = useState('');
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [previousCount, setPreviousCount] = useState<number>(0);
-
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  
   useEffect(() => {
     // 초기 데이터 로드
     fetchQuestionnaires();
-    
-    // 15초마다 데이터 폴링 (실시간 구독 대신)
-    const pollingInterval = setInterval(() => {
-      console.log('데이터 폴링 중...');
-      fetchQuestionnaires(true); // 조용한 업데이트 모드로 호출
-    }, 15000);
-    
-    return () => {
-      clearInterval(pollingInterval);
-    };
   }, []);
 
   async function fetchQuestionnaires(silent = false) {
@@ -118,159 +107,24 @@ function PatientQuestionnaireTable() {
       
       // 이전 데이터와 비교해서 새로운 데이터가 있는지 확인
       if (data) {
-        const currentIds = questionnaires.map(q => q.id);
-        const newItems = data.filter(item => !currentIds.includes(item.id));
+        const currentIds = questionnaires.map(q => q.resident_id);
+        const newItems = data.filter(item => !currentIds.includes(item.resident_id));
         
         if (newItems.length > 0 && !silent) {
           setToast({ message: `${newItems.length}개의 새 데이터가 추가되었습니다!`, type: 'success' });
         }
-      }
-      
-      // 모의 데이터로 폴백 (실제 데이터를 못 가져올 경우)
-      if (!data || data.length === 0) {
-        console.log('데이터가 없어 모의 데이터를 표시합니다.');
-        const mockData: PatientQuestionnaire[] = [
-          {
-            id: 1,
-            name: '김환자',
-            created_at: new Date().toISOString(),
-            at_clinic: true,
-            consent: true,
-            resident_id: '000101-1234567',
-            gender: '남',
-            phone: '010-1234-5678',
-            address: '서울시 강남구',
-            has_private_insurance: true,
-            private_insurance_period: '2년',
-            insurance_company: '삼성생명',
-            emergency_contact_name: '김가족',
-            emergency_contact_relation: '배우자',
-            emergency_contact_phone: '010-8765-4321',
-            visit_reason: '정기검진',
-            treatment_area: '앞니',
-            referral_source: '지인소개',
-            referrer_name: '이소개',
-            referrer_phone: '010-3333-4444',
-            referrer_birth_year: '1980',
-            last_visit: '2023-01-01',
-            medications: '고혈압약',
-            other_medication: '',
-            medical_conditions: '당뇨',
-            other_condition: '',
-            allergies: '페니실린',
-            other_allergy: '',
-            pregnancy_status: '해당없음',
-            pregnancy_week: '',
-            smoking_status: '비흡연',
-            smoking_amount: '',
-            dental_fears: '주사바늘',
-            additional_info: '',
-            submitted_at: new Date().toISOString()
-          }
-        ];
-        setQuestionnaires(mockData);
-        setToast({ message: '데이터베이스에서 데이터를 찾을 수 없어 모의 데이터를 표시합니다.', type: 'info' });
-      } else {
         setQuestionnaires(data);
         setToast({ message: `${data.length}개의 설문 데이터를 로드했습니다.`, type: 'success' });
       }
     } catch (error) {
       console.error('설문 데이터를 가져오는 중 오류 발생:', error);
       setError('데이터를 불러오는데 실패했습니다.');
-      
-      // 오류 발생 시 모의 데이터로 폴백
-      const mockData: PatientQuestionnaire[] = [
-        {
-          id: 1,
-          name: '김환자 (모의 데이터)',
-          created_at: new Date().toISOString(),
-          at_clinic: true,
-          consent: true,
-          resident_id: '000101-1234567',
-          gender: '남',
-          phone: '010-1234-5678',
-          address: '서울시 강남구',
-          has_private_insurance: true,
-          private_insurance_period: '2년',
-          insurance_company: '삼성생명',
-          emergency_contact_name: '김가족',
-          emergency_contact_relation: '배우자',
-          emergency_contact_phone: '010-8765-4321',
-          visit_reason: '정기검진',
-          treatment_area: '앞니',
-          referral_source: '지인소개',
-          referrer_name: '이소개',
-          referrer_phone: '010-3333-4444',
-          referrer_birth_year: '1980',
-          last_visit: '2023-01-01',
-          medications: '고혈압약',
-          other_medication: '',
-          medical_conditions: '당뇨',
-          other_condition: '',
-          allergies: '페니실린',
-          other_allergy: '',
-          pregnancy_status: '해당없음',
-          pregnancy_week: '',
-          smoking_status: '비흡연',
-          smoking_amount: '',
-          dental_fears: '주사바늘',
-          additional_info: '',
-          submitted_at: new Date().toISOString()
-        }
-      ];
-      
-      setQuestionnaires(mockData);
       setToast({ 
         message: `데이터 로드 중 오류 발생: ${error instanceof Error ? error.message : '알 수 없는 오류'}`, 
         type: 'error' 
       });
     } finally {
       setLoading(false);
-    }
-  }
-
-  // 데이터베이스 연결 테스트 함수
-  async function testDatabaseConnection() {
-    try {
-      console.log('데이터베이스 연결 테스트 중...');
-      setToast({ message: '데이터베이스 연결 테스트 중...', type: 'info' });
-      
-      // Supabase 접속 정보 확인 (비밀키는 마스킹)
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      console.log('Supabase URL:', supabaseUrl);
-      console.log('Supabase Key (마스킹):', supabaseKey ? `${supabaseKey.substring(0, 5)}...${supabaseKey.substring(supabaseKey.length - 5)}` : '없음');
-      
-      if (!supabaseUrl || !supabaseKey) {
-        throw new Error('Supabase 환경 변수가 설정되지 않았습니다.');
-      }
-      
-      // 1. DB 연결 확인 - 단순 쿼리 사용
-      const { data: connectionTest, error: connectionError, status } = await supabase
-        .from('patient_questionnaire')
-        .select('id')
-        .limit(1);
-      
-      console.log('연결 테스트 응답 상태 코드:', status);
-      console.log('연결 테스트 결과:', { connectionTest, connectionError });
-      
-      if (connectionError) {
-        console.error('Supabase 오류 상세:', {
-          message: connectionError.message,
-          details: connectionError.details,
-          hint: connectionError.hint,
-          code: connectionError.code
-        });
-        throw connectionError;
-      }
-      
-      setToast({ message: '데이터베이스 연결 성공!', type: 'success' });
-    } catch (error) {
-      console.error('데이터베이스 연결 실패:', error);
-      setToast({ 
-        message: `데이터베이스 연결 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`, 
-        type: 'error' 
-      });
     }
   }
 
@@ -285,7 +139,7 @@ function PatientQuestionnaireTable() {
         created_at: new Date().toISOString(),
         at_clinic: true,
         consent: true,
-        resident_id: '',
+        resident_id: `T${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`,
         gender: '남',
         phone: '',
         address: '',
@@ -409,39 +263,60 @@ function PatientQuestionnaireTable() {
     }
   };
 
-  // 정렬된 데이터
-  const sortedData = [...questionnaires].sort((a, b) => {
-    const aValue = a[sortField];
-    const bValue = b[sortField];
-    
-    if (aValue === null || aValue === undefined) return sortOrder === 'asc' ? -1 : 1;
-    if (bValue === null || bValue === undefined) return sortOrder === 'asc' ? 1 : -1;
-    
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      return sortOrder === 'asc' 
-        ? aValue.localeCompare(bValue) 
-        : bValue.localeCompare(aValue);
-    }
-    
-    return sortOrder === 'asc' 
-      ? (aValue > bValue ? 1 : -1) 
-      : (aValue > bValue ? -1 : 1);
-  });
-
-  // 필터링된 데이터
-  const filteredData = sortedData.filter(item => {
-    return Object.values(item).some(value => 
-      value !== null && 
-      value !== undefined && 
-      value.toString().toLowerCase().includes(filterText.toLowerCase())
-    );
-  });
-
   // 불리언 값 표시 함수
   const renderBoolean = (value: boolean | null | undefined) => {
     if (value === null || value === undefined) return '-';
     return value ? '예' : '아니오';
   };
+
+  // 테이블에 보여줄 데이터 필터링 및 정렬
+  const filteredAndSortedData = useMemo(() => {
+    // 검색어로 필터링
+    let filtered = questionnaires.filter(item => {
+      const searchableValues = [
+        item.name, 
+        item.phone, 
+        item.resident_id,
+        item.address,
+        item.emergency_contact_name,
+        item.visit_reason, 
+        item.treatment_area,
+        item.additional_info
+      ];
+      
+      const searchableText = searchableValues.join(' ').toLowerCase();
+      return searchableText.includes(filterText.toLowerCase());
+    });
+    
+    // 정렬
+    return [...filtered].sort((a, b) => {
+      const aValue = a[sortField];
+      const bValue = b[sortField];
+      
+      // null, undefined 처리
+      if (aValue === null || aValue === undefined) return sortOrder === 'asc' ? -1 : 1;
+      if (bValue === null || bValue === undefined) return sortOrder === 'asc' ? 1 : -1;
+      
+      // 문자열 비교
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortOrder === 'asc' 
+          ? aValue.localeCompare(bValue) 
+          : bValue.localeCompare(aValue);
+      }
+      
+      // 불리언 비교
+      if (typeof aValue === 'boolean' && typeof bValue === 'boolean') {
+        return sortOrder === 'asc' 
+          ? (aValue === bValue ? 0 : aValue ? 1 : -1)
+          : (aValue === bValue ? 0 : aValue ? -1 : 1);
+      }
+      
+      // 그 외 (숫자 등)
+      return sortOrder === 'asc' 
+        ? (aValue > bValue ? 1 : -1)
+        : (aValue > bValue ? -1 : 1);
+    });
+  }, [questionnaires, filterText, sortField, sortOrder]);
 
   return (
     <div className="app-container">
@@ -457,12 +332,6 @@ function PatientQuestionnaireTable() {
         <h1 className="text-2xl font-bold">환자 설문 데이터</h1>
         <div className="flex gap-2">
           <button 
-            onClick={testDatabaseConnection}
-            className="p-2 bg-blue-300 text-blue-900 rounded-md hover:bg-blue-400 text-sm"
-          >
-            DB 연결 테스트
-          </button>
-          <button 
             onClick={addTestData}
             className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
           >
@@ -474,22 +343,23 @@ function PatientQuestionnaireTable() {
       
       {error && <div className="error-message">{error}</div>}
       
-      <div className="controls">
-        <div className="filter-container relative">
+      <div className="controls flex flex-wrap gap-2 mb-4">
+        {/* 검색 필터 */}
+        <div className="filter-container relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4 pointer-events-none" />
           <input
             type="text"
             placeholder="검색어를 입력하세요"
             value={filterText}
             onChange={e => setFilterText(e.target.value)}
-            className="filter-input pl-10"
+            className="filter-input pl-10 w-full py-2 px-3 border border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700"
           />
         </div>
         
         <button
           onClick={() => fetchQuestionnaires()}
           disabled={loading}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded mr-2 disabled:bg-blue-300"
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded disabled:bg-blue-300"
         >
           {loading ? (
             <div className="flex items-center">
@@ -500,42 +370,55 @@ function PatientQuestionnaireTable() {
         </button>
       </div>
       
+      <div className="text-sm mb-2">
+        총 {filteredAndSortedData.length}개 데이터 표시 중 (전체 {questionnaires.length}개)
+      </div>
+      
       {loading ? (
-        <div className="loading">데이터를 불러오는 중...</div>
+        <div className="loading-container">
+          <div className="loader"></div>
+          <p>데이터를 불러오는 중...</p>
+        </div>
       ) : (
         <div className="table-container">
           <table>
             <thead>
               <tr>
-                {/* 기본 정보 */}
-                <th onClick={() => handleSort('name')}>
-                  환자명 {sortField === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </th>
-                <th onClick={() => handleSort('created_at')}>
-                  작성일시 {sortField === 'created_at' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th>동작</th>
+                
+                {/* 제출시간 */}
+                <th onClick={() => handleSort('submitted_at')}>
+                  제출시간 {sortField === 'submitted_at' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('at_clinic')}>
-                  내원여부 {sortField === 'at_clinic' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  내원유무 {sortField === 'at_clinic' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-                <th onClick={() => handleSort('consent')}>
-                  동의여부 {sortField === 'consent' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th onClick={() => handleSort('name')}>
+                  이름 {sortField === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('resident_id')}>
                   주민번호 {sortField === 'resident_id' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-                <th onClick={() => handleSort('gender')}>
-                  성별 {sortField === 'gender' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th onClick={() => handleSort('visit_reason')}>
+                  내원목적 {sortField === 'visit_reason' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </th>
+                <th onClick={() => handleSort('treatment_area')}>
+                  불편부위 {sortField === 'treatment_area' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </th>
+                <th onClick={() => handleSort('referral_source')}>
+                  내원경로 {sortField === 'referral_source' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('phone')}>
-                  연락처 {sortField === 'phone' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  전화번호 {sortField === 'phone' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-                <th onClick={() => handleSort('address')}>
-                  주소 {sortField === 'address' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th onClick={() => handleSort('dental_fears')}>
+                  치과공포 {sortField === 'dental_fears' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 사보험 정보 */}
+                <th onClick={() => handleSort('additional_info')}>
+                  부가정보 {sortField === 'additional_info' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </th>
                 <th onClick={() => handleSort('has_private_insurance')}>
-                  실손보험 {sortField === 'has_private_insurance' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  보험가입 {sortField === 'has_private_insurance' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('private_insurance_period')}>
                   보험기간 {sortField === 'private_insurance_period' && (sortOrder === 'asc' ? '↑' : '↓')}
@@ -543,27 +426,11 @@ function PatientQuestionnaireTable() {
                 <th onClick={() => handleSort('insurance_company')}>
                   보험회사 {sortField === 'insurance_company' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 긴급연락처 */}
-                <th onClick={() => handleSort('emergency_contact_name')}>
-                  긴급연락처명 {sortField === 'emergency_contact_name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th onClick={() => handleSort('gender')}>
+                  성별 {sortField === 'gender' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-                <th onClick={() => handleSort('emergency_contact_relation')}>
-                  긴급연락처관계 {sortField === 'emergency_contact_relation' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </th>
-                <th onClick={() => handleSort('emergency_contact_phone')}>
-                  긴급연락처번호 {sortField === 'emergency_contact_phone' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </th>
-
-                {/* 내원 정보 */}
-                <th onClick={() => handleSort('visit_reason')}>
-                  내원이유 {sortField === 'visit_reason' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </th>
-                <th onClick={() => handleSort('treatment_area')}>
-                  치료부위 {sortField === 'treatment_area' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </th>
-                <th onClick={() => handleSort('referral_source')}>
-                  소개경로 {sortField === 'referral_source' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th onClick={() => handleSort('address')}>
+                  주소 {sortField === 'address' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('referrer_name')}>
                   소개자명 {sortField === 'referrer_name' && (sortOrder === 'asc' ? '↑' : '↓')}
@@ -575,152 +442,111 @@ function PatientQuestionnaireTable() {
                   소개자생년 {sortField === 'referrer_birth_year' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('last_visit')}>
-                  마지막내원 {sortField === 'last_visit' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  최근방문 {sortField === 'last_visit' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 복용약물 */}
                 <th onClick={() => handleSort('medications')}>
                   복용약물 {sortField === 'medications' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('other_medication')}>
                   기타약물 {sortField === 'other_medication' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 질환 */}
                 <th onClick={() => handleSort('medical_conditions')}>
                   질환 {sortField === 'medical_conditions' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('other_condition')}>
                   기타질환 {sortField === 'other_condition' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 알레르기 */}
                 <th onClick={() => handleSort('allergies')}>
                   알레르기 {sortField === 'allergies' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('other_allergy')}>
                   기타알레르기 {sortField === 'other_allergy' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 임신/수유 */}
                 <th onClick={() => handleSort('pregnancy_status')}>
                   임신상태 {sortField === 'pregnancy_status' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('pregnancy_week')}>
                   임신주차 {sortField === 'pregnancy_week' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 흡연 */}
                 <th onClick={() => handleSort('smoking_status')}>
                   흡연여부 {sortField === 'smoking_status' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th onClick={() => handleSort('smoking_amount')}>
                   흡연량 {sortField === 'smoking_amount' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 치과 불안감 */}
-                <th onClick={() => handleSort('dental_fears')}>
-                  치과불안감 {sortField === 'dental_fears' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th onClick={() => handleSort('emergency_contact_name')}>
+                  비상연락처이름 {sortField === 'emergency_contact_name' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 기타 */}
-                <th onClick={() => handleSort('additional_info')}>
-                  추가정보 {sortField === 'additional_info' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th onClick={() => handleSort('emergency_contact_relation')}>
+                  비상연락처관계 {sortField === 'emergency_contact_relation' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 제출시각 */}
-                <th onClick={() => handleSort('submitted_at')}>
-                  제출시각 {sortField === 'submitted_at' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <th onClick={() => handleSort('emergency_contact_phone')}>
+                  비상연락처번호 {sortField === 'emergency_contact_phone' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-
-                {/* 작업 열 추가 */}
-                <th className="text-center">작업</th>
+                <th onClick={() => handleSort('consent')}>
+                  정보동의 {sortField === 'consent' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </th>
+                <th onClick={() => handleSort('created_at')}>
+                  생성시간 {sortField === 'created_at' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filteredData.length > 0 ? (
-                filteredData.map((item, index) => (
+              {filteredAndSortedData.length > 0 ? (
+                filteredAndSortedData.map((item, index) => (
                   <tr key={index} className="group hover:bg-accent/50">
-                    {/* 기본 정보 */}
-                    <td>
-                      {item.name || '-'} 
-                      <span className="text-xs text-muted-foreground ml-1">(ID: {item.id || '없음'})</span>
+                    <td className="sticky left-0 bg-background group-hover:bg-accent/50 text-center">
+                      <button
+                        onClick={() => item.id && deleteQuestionnaire(item.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white p-1 rounded text-sm"
+                        aria-label="삭제"
+                        disabled={!item.id}
+                        title={item.id ? `삭제` : '삭제할 수 없음'}
+                      >
+                        삭제
+                      </button>
                     </td>
-                    <td>{new Date(item.created_at).toLocaleString()}</td>
+                    <td>{item.submitted_at ? new Date(item.submitted_at).toLocaleString() : '-'}</td>
                     <td>{renderBoolean(item.at_clinic)}</td>
-                    <td>{renderBoolean(item.consent)}</td>
+                    <td>{item.name || '-'}</td>
                     <td>{item.resident_id || '-'}</td>
-                    <td>{item.gender || '-'}</td>
-                    <td>{item.phone || '-'}</td>
-                    <td>{item.address || '-'}</td>
-
-                    {/* 사보험 정보 */}
-                    <td>{renderBoolean(item.has_private_insurance)}</td>
-                    <td>{item.private_insurance_period || '-'}</td>
-                    <td>{item.insurance_company || '-'}</td>
-
-                    {/* 긴급연락처 */}
-                    <td>{item.emergency_contact_name || '-'}</td>
-                    <td>{item.emergency_contact_relation || '-'}</td>
-                    <td>{item.emergency_contact_phone || '-'}</td>
-
-                    {/* 내원 정보 */}
                     <td>{item.visit_reason || '-'}</td>
                     <td>{item.treatment_area || '-'}</td>
                     <td>{item.referral_source || '-'}</td>
+                    <td>{item.phone || '-'}</td>
+                    <td>{item.dental_fears || '-'}</td>
+                    <td>{item.additional_info || '-'}</td>
+                    <td>{renderBoolean(item.has_private_insurance)}</td>
+                    <td>{item.private_insurance_period || '-'}</td>
+                    <td>{item.insurance_company || '-'}</td>
+                    <td>{item.gender || '-'}</td>
+                    <td>{item.address || '-'}</td>
                     <td>{item.referrer_name || '-'}</td>
                     <td>{item.referrer_phone || '-'}</td>
                     <td>{item.referrer_birth_year || '-'}</td>
                     <td>{item.last_visit || '-'}</td>
-
-                    {/* 복용약물 */}
                     <td>{item.medications || '-'}</td>
                     <td>{item.other_medication || '-'}</td>
-
-                    {/* 질환 */}
                     <td>{item.medical_conditions || '-'}</td>
                     <td>{item.other_condition || '-'}</td>
-
-                    {/* 알레르기 */}
                     <td>{item.allergies || '-'}</td>
                     <td>{item.other_allergy || '-'}</td>
-
-                    {/* 임신/수유 */}
                     <td>{item.pregnancy_status || '-'}</td>
                     <td>{item.pregnancy_week || '-'}</td>
-
-                    {/* 흡연 */}
                     <td>{item.smoking_status || '-'}</td>
                     <td>{item.smoking_amount || '-'}</td>
-
-                    {/* 치과 불안감 */}
-                    <td>{item.dental_fears || '-'}</td>
-
-                    {/* 기타 */}
-                    <td>{item.additional_info || '-'}</td>
-
-                    {/* 제출시각 */}
-                    <td>{item.submitted_at ? new Date(item.submitted_at).toLocaleString() : '-'}</td>
-
-                    {/* 작업 버튼 */}
-                    <td className="text-center">
-                      {item.id ? (
-                        <button 
-                          onClick={() => deleteQuestionnaire(item.id)}
-                          className="p-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
-                          title="삭제"
-                        >
-                          삭제 #{item.id}
-                        </button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">ID 없음</span>
-                      )}
-                    </td>
+                    <td>{item.emergency_contact_name || '-'}</td>
+                    <td>{item.emergency_contact_relation || '-'}</td>
+                    <td>{item.emergency_contact_phone || '-'}</td>
+                    <td>{renderBoolean(item.consent)}</td>
+                    <td>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={36} className="text-center py-4 text-muted-foreground">표시할 데이터가 없습니다.</td>
+                  <td colSpan={35} className="text-center py-4">
+                    표시할 데이터가 없습니다.
+                  </td>
                 </tr>
               )}
             </tbody>
