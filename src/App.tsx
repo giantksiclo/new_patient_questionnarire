@@ -4,6 +4,8 @@ import { ThemeProvider } from './components/ThemeProvider';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Search } from 'lucide-react';
 import { Toast } from './components/Toast';
+import { createBrowserRouter, RouterProvider, Navigate, Route, createRoutesFromElements, Link } from 'react-router-dom';
+import PatientConsultation from './components/PatientConsultation';
 
 // 환자 설문 데이터 타입 정의
 interface PatientQuestionnaire {
@@ -510,15 +512,25 @@ function PatientQuestionnaireTable() {
                 filteredAndSortedData.map((item, index) => (
                   <tr key={index} className="group hover:bg-accent/50">
                     <td className="sticky left-0 bg-background group-hover:bg-accent/50 text-center">
-                      <button
-                        onClick={() => item.resident_id && deleteQuestionnaire(item.resident_id)}
-                        className="bg-red-500 hover:bg-red-600 text-white p-1 rounded text-sm"
-                        aria-label="삭제"
-                        disabled={!item.resident_id}
-                        title={item.resident_id ? `삭제` : '삭제할 수 없음'}
-                      >
-                        삭제
-                      </button>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => item.resident_id && deleteQuestionnaire(item.resident_id)}
+                          className="bg-red-500 hover:bg-red-600 text-white p-1 rounded text-sm"
+                          aria-label="삭제"
+                          disabled={!item.resident_id}
+                          title={item.resident_id ? `삭제` : '삭제할 수 없음'}
+                        >
+                          삭제
+                        </button>
+                        <Link
+                          to={`/consultation/${item.resident_id}`}
+                          className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded text-sm"
+                          aria-label="상담"
+                          title="상담 기록 보기/추가"
+                        >
+                          상담
+                        </Link>
+                      </div>
                     </td>
                     <td>{item.submitted_at ? new Date(item.submitted_at).toLocaleString() : '-'}</td>
                     <td>{renderBoolean(item.at_clinic)}</td>
@@ -571,12 +583,21 @@ function PatientQuestionnaireTable() {
   );
 }
 
+// 라우터 설정
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <>
+      <Route path="/" element={<PatientQuestionnaireTable />} />
+      <Route path="/consultation/:residentId" element={<PatientConsultation />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </>
+  )
+);
+
 function App() {
   return (
-    <ThemeProvider defaultTheme="dark">
-      <div className="min-h-screen bg-background">
-        <PatientQuestionnaireTable />
-      </div>
+    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+      <RouterProvider router={router} />
     </ThemeProvider>
   );
 }
