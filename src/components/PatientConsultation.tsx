@@ -148,10 +148,16 @@ const PatientConsultation = () => {
     return number.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   };
 
-  // 문자열에서 숫자만 추출하는 함수 (콤마 제거)
-  const parseNumber = (value: string) => {
-    if (!value) return 0;
-    return parseInt(value.replace(/[^\d]/g, ''), 10) || 0;
+  // 천단위 콤마가 포함된 문자열을 숫자로 변환
+  const parseNumber = (str: string) => {
+    if (!str) return 0;
+    // 모든 비숫자 문자 제거 (콤마, 공백 등)
+    const cleanedStr = str.replace(/[^\d]/g, '');
+    if (cleanedStr === '') return 0;
+    
+    // Number 함수 사용하여 변환 (parseInt보다 더 정확함)
+    const num = Number(cleanedStr);
+    return isNaN(num) ? 0 : num;
   };
 
   // 수량 증감 핸들러
@@ -184,13 +190,14 @@ const PatientConsultation = () => {
           [name]: formattedValue 
         };
         
-        // 상담금액이나 수납금액이 변경된 경우 잔여금액 자동계산
-        if (name === 'consultation_amount' || name === 'payment_amount') {
-          const consultAmount = parseNumber(updated.consultation_amount);
-          const paymentAmount = parseNumber(updated.payment_amount);
-          const remaining = Math.max(0, consultAmount - paymentAmount);
-          updated.remaining_payment = remaining > 0 ? formatNumber(remaining.toString()) : '0';
-        }
+        // 금액 필드 중 하나가 변경된 경우 잔여금액 자동계산
+        // 상담비 - 수납금액 = 잔여금액 (진단비는 계산에서 제외)
+        const consultAmount = parseNumber(name === 'consultation_amount' ? formattedValue : updated.consultation_amount);
+        const paymentAmount = parseNumber(name === 'payment_amount' ? formattedValue : updated.payment_amount);
+        
+        // 잔여금액 계산 (상담비 - 수납금액)
+        const remaining = Math.max(0, consultAmount - paymentAmount);
+        updated.remaining_payment = remaining > 0 ? formatNumber(remaining.toString()) : '0';
         
         return updated;
       });
@@ -224,7 +231,12 @@ const PatientConsultation = () => {
       // 문자열을 숫자로 변환하는 함수 - 정확한 변환 보장
       const toNumber = (str: string) => {
         if (str === '' || str === null || str === undefined) return 0;
-        const num = parseInt(str, 10);
+        // 콤마를 제거하고, 숫자만 추출
+        const cleanedStr = str.replace(/[^\d]/g, '');
+        if (cleanedStr === '') return 0;
+        
+        // parseInt는 최대값에 제한이 있으므로 Number 사용
+        const num = Number(cleanedStr);
         return isNaN(num) ? 0 : num;
       };
       
@@ -704,7 +716,7 @@ const PatientConsultation = () => {
               disabled={loading}
               className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded disabled:bg-blue-300"
             >
-              {loading ? '저장 중...' : '상담 기록 저장'}
+              {loading ? '저장 중...' : `상담 기록 저장 (기존 상담: ${consultations.length}회)`}
             </button>
           </div>
         </form>
