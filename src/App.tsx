@@ -955,7 +955,6 @@ function PatientQuestionnaireTable() {
   const [sortField, setSortField] = useState<keyof PatientQuestionnaire>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
-  const [dateFilter, setDateFilter] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [expandedAddresses, setExpandedAddresses] = useState<Record<string, boolean>>({});
