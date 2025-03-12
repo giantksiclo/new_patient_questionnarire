@@ -1657,26 +1657,32 @@ function PatientQuestionnaireTable() {
   };
 
   // 날짜 문자열을 YYYY-MM-DD 형식으로 변환 (달력 입력용)
+  /*
   const formatDateForInput = (dateStr: string | null | undefined) => {
     if (!dateStr) return '';
     const date = new Date(dateStr);
     const koreanDate = new Date(date.getTime() + (9 * 60 * 60 * 1000));
     return koreanDate.toISOString().split('T')[0];
   };
+  */
 
   // YYYY-MM-DD 형식을 YYYY/MM/DD로 변환 (표시용)
+  /*
   const formatDateForDisplay = (dateStr: string | null | undefined) => {
     if (!dateStr) return '';
     return dateStr.replace(/-/g, '/');
   };
+  */
 
   // 날짜를 YYYY/MM/DD 형식의 문자열로 변환
+  /*
   const dateToYYYYMMDD = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}/${month}/${day}`;
   };
+  */
 
   // 이번 달, 지난 달 설정 함수
   const setCurrentMonth = () => {
