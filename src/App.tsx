@@ -2,12 +2,76 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import { ThemeProvider } from './components/ThemeProvider';
 import { ThemeToggle } from './components/ThemeToggle';
-import { Search } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { Toast } from './components/Toast';
 import { createBrowserRouter, RouterProvider, Navigate, Route, createRoutesFromElements, Link } from 'react-router-dom';
 import PatientConsultation from './components/PatientConsultation';
-import Modal from './components/Modal';
-import React from 'react';
+import React, { useRef } from 'react';
+
+// Modal 컴포넌트 직접 정의
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}
+
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children }) => {
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // ESC 키를 누르면 모달 닫기
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // 모달이 열리면 body 스크롤 방지
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, onClose]);
+
+  // 모달 외부 클릭 시 닫기
+  const handleOutsideClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50 p-4"
+      onClick={handleOutsideClick}
+    >
+      <div 
+        ref={modalRef}
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="absolute top-4 right-4">
+          <button 
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            aria-label="닫기"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+};
 
 // 환자 설문 데이터 타입 정의
 interface PatientQuestionnaire {
