@@ -6,6 +6,8 @@ import { Search } from 'lucide-react';
 import { Toast } from './components/Toast';
 import { createBrowserRouter, RouterProvider, Navigate, Route, createRoutesFromElements, Link } from 'react-router-dom';
 import PatientConsultation from './components/PatientConsultation';
+import Modal from './components/Modal';
+import React from 'react';
 
 // 환자 설문 데이터 타입 정의
 interface PatientQuestionnaire {
@@ -70,6 +72,26 @@ interface PatientQuestionnaire {
   submitted_at: string;
 }
 
+// 주민등록번호 검증 함수
+const isValidResidentId = (value: string) => {
+  const digits = value.replace(/-/g, '');
+  if (digits.length !== 13) return false;
+  const multipliers = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5];
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(digits[i], 10) * multipliers[i];
+  }
+  const remainder = (11 - (sum % 11)) % 10;
+  const checkDigit = parseInt(digits[12], 10);
+  return remainder === checkDigit;
+};
+
+// 한국 휴대폰 번호 검증 함수
+const isValidKoreanPhoneNumber = (phone: string) => {
+  const pattern = /^(010|011|016|017|018|019)-\d{3,4}-\d{4}$/;
+  return pattern.test(phone);
+};
+
 function PatientQuestionnaireTable() {
   const [questionnaires, setQuestionnaires] = useState<PatientQuestionnaire[]>([]);
   const [loading, setLoading] = useState(false);
@@ -94,6 +116,84 @@ function PatientQuestionnaireTable() {
   const [consultationConsultants, setConsultationConsultants] = useState<Record<string, string[]>>({});
   const [uniqueConsultants, setUniqueConsultants] = useState<string[]>([]);
   const [selectedConsultant, setSelectedConsultant] = useState<string>('');
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [testInputData, setTestInputData] = useState({
+    name: '',
+    resident_id: '',
+    phone: '',
+    gender: '',
+    referral_source: ''
+  });
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  
+  // 테이블 드래그 스크롤을 위한 상태와 참조 추가
+  const tableContainerRef = React.useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [startY, setStartY] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  // 마우스 다운 이벤트 핸들러
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!tableContainerRef.current) return;
+    
+    // 텍스트 선택 등의 상황에서는 드래그 스크롤 방지
+    if ((e.target as HTMLElement).tagName === 'INPUT' || 
+        (e.target as HTMLElement).tagName === 'BUTTON' ||
+        (e.target as HTMLElement).tagName === 'A' ||
+        (e.target as HTMLElement).tagName === 'SELECT') {
+      return;
+    }
+    
+    setIsDragging(true);
+    setStartX(e.pageX - tableContainerRef.current.offsetLeft);
+    setStartY(e.pageY - tableContainerRef.current.offsetTop);
+    setScrollLeft(tableContainerRef.current.scrollLeft);
+    setScrollTop(tableContainerRef.current.scrollTop);
+    
+    // 텍스트 선택 방지
+    e.preventDefault();
+  };
+
+  // 마우스 이동 이벤트 핸들러
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging || !tableContainerRef.current) return;
+    
+    const x = e.pageX - tableContainerRef.current.offsetLeft;
+    const y = e.pageY - tableContainerRef.current.offsetTop;
+    
+    // 이동 거리 계산
+    const walkX = (x - startX) * 1.5; // 스크롤 속도 조절 가능
+    const walkY = (y - startY) * 1.5;
+    
+    // 스크롤 위치 업데이트
+    tableContainerRef.current.scrollLeft = scrollLeft - walkX;
+    tableContainerRef.current.scrollTop = scrollTop - walkY;
+  };
+
+  // 마우스 업 이벤트 핸들러
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // 마우스 나가기 이벤트 핸들러
+  const handleMouseLeave = () => {
+    if (isDragging) {
+      setIsDragging(false);
+    }
+  };
+
+  // 이벤트 리스너 등록 및 제거
+  useEffect(() => {
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, startX, startY, scrollLeft, scrollTop]);
   
   useEffect(() => {
     // 초기 데이터 로드
@@ -127,15 +227,6 @@ function PatientQuestionnaireTable() {
             allConsultants.add(item.consultant.trim());
           }
         });
-        
-        // 상담자가 없는 경우를 위한 직접 입력 옵션 추가
-        if (allConsultants.size === 0) {
-          // 테스트 데이터 추가 (실제 환경에서는 제거해야 합니다)
-          allConsultants.add('김의사');
-          allConsultants.add('이의사');
-          allConsultants.add('박의사');
-          console.log('상담자 데이터가 없어 테스트 데이터를 추가합니다.');
-        }
         
         // 전체 상담자 목록 정렬하여 설정
         const sortedConsultants = Array.from(allConsultants).sort();
@@ -248,15 +339,6 @@ function PatientQuestionnaireTable() {
           }
         });
         
-        // 상담자가 없는 경우를 위한 직접 입력 옵션 추가
-        if (allConsultants.size === 0) {
-          // 테스트 데이터 추가 (실제 환경에서는 제거해야 합니다)
-          allConsultants.add('김의사');
-          allConsultants.add('이의사');
-          allConsultants.add('박의사');
-          console.log('상담자 데이터가 없어 테스트 데이터를 추가합니다.');
-        }
-        
         setConsultationCounts(counts);
         setConsultationConsultants(consultants);
         
@@ -270,20 +352,176 @@ function PatientQuestionnaireTable() {
     }
   }
 
-  // 테스트용 데이터 추가 함수
+  // 테스트용 데이터 추가 함수 - 사용자 입력 모달 열기
+  const openTestDataModal = () => {
+    setTestInputData({
+      name: '',
+      resident_id: '',
+      phone: '',
+      gender: '',
+      referral_source: ''
+    });
+    setValidationErrors({});
+    setIsTestModalOpen(true);
+  };
+
+  // 테스트 데이터 입력 처리 함수 (select 요소도 처리할 수 있도록 수정)
+  const handleTestInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target;
+    
+    // 주민등록번호 처리 및 성별 추론
+    if (name === 'resident_id') {
+      let formattedValue = value.replace(/[^0-9-]/g, '');
+      if (formattedValue.length > 6 && !formattedValue.includes('-')) {
+        formattedValue = `${formattedValue.slice(0, 6)}-${formattedValue.slice(6, 13)}`;
+      }
+      
+      // 성별 추론 (주민번호 뒷자리 첫번째 숫자로)
+      let gender = '';
+      const genderDigit = formattedValue.length >= 8 ? formattedValue.charAt(7) : '';
+      if (['1', '3', '5', '7', '9'].includes(genderDigit)) {
+        gender = '남';
+      } else if (['2', '4', '6', '8', '0'].includes(genderDigit)) {
+        gender = '여';
+      }
+      
+      setTestInputData(prev => ({
+        ...prev,
+        resident_id: formattedValue,
+        gender: gender || prev.gender
+      }));
+      
+      // 유효성 검사
+      if (formattedValue.length === 14) {
+        if (!isValidResidentId(formattedValue)) {
+          setValidationErrors(prev => ({
+            ...prev,
+            resident_id: '유효하지 않은 주민등록번호입니다'
+          }));
+        } else {
+          setValidationErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors.resident_id;
+            return newErrors;
+          });
+        }
+      } else {
+        setValidationErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.resident_id;
+          return newErrors;
+        });
+      }
+      
+      return;
+    }
+    
+    // 전화번호 자동 하이픈 처리
+    else if (name === 'phone') {
+      let digits = value.replace(/[^0-9]/g, '');
+      let formattedValue = '';
+      
+      if (digits.length <= 3) {
+        formattedValue = digits;
+      } else if (digits.length <= 7) {
+        formattedValue = `${digits.slice(0, 3)}-${digits.slice(3)}`;
+      } else {
+        formattedValue = `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7, 11)}`;
+      }
+      
+      setTestInputData(prev => ({
+        ...prev,
+        phone: formattedValue
+      }));
+      
+      // 유효성 검사
+      if (formattedValue && !isValidKoreanPhoneNumber(formattedValue)) {
+        setValidationErrors(prev => ({
+          ...prev,
+          phone: '유효하지 않은 전화번호입니다. 예) 010-1234-5678'
+        }));
+      } else {
+        setValidationErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.phone;
+          return newErrors;
+        });
+      }
+      
+      return;
+    }
+    
+    // 일반 필드 처리 (드롭다운 포함)
+    else {
+      setTestInputData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+  };
+
+  // 테스트용 데이터 추가 함수 - 실제 데이터 저장
   async function addTestData() {
     try {
+      // 유효성 검사
+      const errors: Record<string, string> = {};
+      
+      if (testInputData.resident_id && testInputData.resident_id.length === 14) {
+        if (!isValidResidentId(testInputData.resident_id)) {
+          errors.resident_id = '유효하지 않은 주민등록번호입니다';
+        }
+      }
+      
+      if (testInputData.phone && !isValidKoreanPhoneNumber(testInputData.phone)) {
+        errors.phone = '유효하지 않은 전화번호입니다. 예) 010-1234-5678';
+      }
+      
+      if (Object.keys(errors).length > 0) {
+        setValidationErrors(errors);
+        return;
+      }
+      
+      // 주민번호 중복 확인 (입력된 주민번호가 있는 경우에만)
+      if (testInputData.resident_id) {
+        console.log('주민번호 중복 확인 중...');
+        
+        const { data: existingData, error: checkError } = await supabase
+          .from('patient_questionnaire')
+          .select('id, name')
+          .eq('resident_id', testInputData.resident_id)
+          .maybeSingle();
+        
+        if (checkError) {
+          console.error('주민번호 중복 확인 중 오류 발생:', checkError);
+        }
+        
+        if (existingData) {
+          console.log('중복된 주민번호 발견:', existingData);
+          setValidationErrors(prev => ({
+            ...prev,
+            resident_id: `이미 등록된 주민번호입니다 (환자명: ${existingData.name || '미상'})`
+          }));
+          setToast({ 
+            message: `이미 등록된 주민번호입니다: ${testInputData.resident_id}`, 
+            type: 'error' 
+          });
+          return;
+        }
+      }
+      
       console.log('테스트 데이터 추가 시도 중...');
       
       // 테스트 데이터 - 필수 필드만 포함
       const testData = {
-        name: `테스트 ${Math.floor(Math.random() * 1000)}`,
+        name: testInputData.name || `테스트 ${Math.floor(Math.random() * 1000)}`,
         created_at: new Date().toISOString(),
         at_clinic: true,
         consent: true,
-        resident_id: `T${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`,
-        gender: '남',
-        phone: '',
+        resident_id: testInputData.resident_id || `T${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`,
+        gender: testInputData.gender || '남',
+        phone: testInputData.phone || '',
         address: '',
         has_private_insurance: false,
         private_insurance_period: '',
@@ -293,7 +531,7 @@ function PatientQuestionnaireTable() {
         emergency_contact_phone: '',
         visit_reason: '',
         treatment_area: '',
-        referral_source: '',
+        referral_source: testInputData.referral_source || '',
         referrer_name: '',
         referrer_phone: '',
         referrer_birth_year: '',
@@ -330,6 +568,20 @@ function PatientQuestionnaireTable() {
           hint: error.hint,
           code: error.code
         });
+        
+        // 주민번호 중복 관련 오류인 경우 (Supabase에서 고유 제약 조건 위반 오류 코드)
+        if (error.code === '23505' || error.message.includes('duplicate') || error.message.includes('unique')) {
+          setValidationErrors(prev => ({
+            ...prev,
+            resident_id: '이미 등록된 주민번호입니다'
+          }));
+          setToast({ 
+            message: '이미 등록된 주민번호입니다', 
+            type: 'error' 
+          });
+          return;
+        }
+        
         throw error;
       }
       
@@ -338,11 +590,13 @@ function PatientQuestionnaireTable() {
         // 테이블의 맨 위에 새 데이터 추가
         setQuestionnaires(prev => [data[0] as PatientQuestionnaire, ...prev]);
         setToast({ message: '테스트 데이터가 추가되었습니다!', type: 'success' });
+        setIsTestModalOpen(false); // 모달 닫기
       } else {
         // 데이터가 반환되지 않았지만 오류도 없는 경우
         setToast({ message: '데이터가 추가되었으나, 반환된 데이터가 없습니다.', type: 'info' });
         // 데이터 새로고침
         fetchQuestionnaires();
+        setIsTestModalOpen(false); // 모달 닫기
       }
     } catch (error) {
       console.error('테스트 데이터 추가 중 오류 발생:', error);
@@ -845,6 +1099,83 @@ function PatientQuestionnaireTable() {
     setEndDate(newEndDate);
   };
 
+  // 이번주, 지난주, 오늘, 어제 설정 함수 추가
+  const setCurrentWeek = () => {
+    const now = new Date();
+    const day = now.getDay(); // 0: 일요일, 1: 월요일, ..., 6: 토요일
+    
+    // 이번 주의 시작일(월요일)을 계산 - 현재 날짜에서 요일 값을 빼고 1을 더함
+    const mondayOffset = day === 0 ? -6 : 1 - day; // 일요일인 경우 특별 처리
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() + mondayOffset);
+    
+    // 이번 주의 마지막 날(일요일)을 계산
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    
+    // YYYY-MM-DD 형식으로 변환
+    const newStartDate = startOfWeek.toISOString().split('T')[0];
+    const newEndDate = endOfWeek.toISOString().split('T')[0];
+    
+    setStartDateInput(newStartDate);
+    setEndDateInput(newEndDate);
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+  };
+  
+  const setPreviousWeek = () => {
+    const now = new Date();
+    const day = now.getDay(); // 0: 일요일, 1: 월요일, ..., 6: 토요일
+    
+    // 이번 주의 시작일(월요일)을 계산
+    const mondayOffset = day === 0 ? -6 : 1 - day; // 일요일인 경우 특별 처리
+    const startOfThisWeek = new Date(now);
+    startOfThisWeek.setDate(now.getDate() + mondayOffset);
+    
+    // 지난 주의 시작일(월요일)을 계산 - 이번 주 월요일에서 7일 뺌
+    const startOfPrevWeek = new Date(startOfThisWeek);
+    startOfPrevWeek.setDate(startOfThisWeek.getDate() - 7);
+    
+    // 지난 주의 마지막 날(일요일)을 계산
+    const endOfPrevWeek = new Date(startOfPrevWeek);
+    endOfPrevWeek.setDate(startOfPrevWeek.getDate() + 6);
+    
+    // YYYY-MM-DD 형식으로 변환
+    const newStartDate = startOfPrevWeek.toISOString().split('T')[0];
+    const newEndDate = endOfPrevWeek.toISOString().split('T')[0];
+    
+    setStartDateInput(newStartDate);
+    setEndDateInput(newEndDate);
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+  };
+  
+  const setToday = () => {
+    const today = new Date();
+    
+    // YYYY-MM-DD 형식으로 변환
+    const todayString = today.toISOString().split('T')[0];
+    
+    setStartDateInput(todayString);
+    setEndDateInput(todayString);
+    setStartDate(todayString);
+    setEndDate(todayString);
+  };
+  
+  const setYesterday = () => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    
+    // YYYY-MM-DD 형식으로 변환
+    const yesterdayString = yesterday.toISOString().split('T')[0];
+    
+    setStartDateInput(yesterdayString);
+    setEndDateInput(yesterdayString);
+    setStartDate(yesterdayString);
+    setEndDate(yesterdayString);
+  };
+
   // 필터링 및 정렬 함수
   const filteredAndSortedData = useMemo(() => {
     // 검색어 필터링
@@ -1344,10 +1675,10 @@ function PatientQuestionnaireTable() {
         <h1 className="text-2xl font-bold">샤인치과 환자 관리프로그램 v1.0</h1>
         <div className="flex gap-2">
           <button 
-            onClick={addTestData}
+            onClick={openTestDataModal}
             className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
           >
-            테스트 데이터 추가
+            구환 데이터 추가
           </button>
           <ThemeToggle />
         </div>
@@ -1500,7 +1831,35 @@ function PatientQuestionnaireTable() {
       </div>
       
       {/* 날짜 빠른 선택 버튼 */}
-      <div className="flex gap-2 mb-4 mt-1">
+      <div className="flex gap-2 mb-4 mt-1 flex-wrap">
+        <button
+          onClick={setToday}
+          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          title="오늘 데이터 보기"
+        >
+          오늘
+        </button>
+        <button
+          onClick={setYesterday}
+          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          title="어제 데이터 보기"
+        >
+          어제
+        </button>
+        <button
+          onClick={setCurrentWeek}
+          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          title="이번 주 데이터 보기"
+        >
+          이번주
+        </button>
+        <button
+          onClick={setPreviousWeek}
+          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          title="지난 주 데이터 보기"
+        >
+          지난주
+        </button>
         <button
           onClick={setCurrentMonth}
           className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
@@ -1541,11 +1900,16 @@ function PatientQuestionnaireTable() {
           <p>데이터를 불러오는 중...</p>
         </div>
       ) : (
-        <div className="table-container">
+        <div 
+          ref={tableContainerRef}
+          className="table-container overflow-auto max-h-[calc(100vh-300px)] relative cursor-grab active:cursor-grabbing"
+          onMouseDown={handleMouseDown}
+          onMouseLeave={handleMouseLeave}
+        >
           <table>
-            <thead>
-              <tr>
-                <th>동작</th>
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-white dark:bg-gray-800 shadow-sm">
+                <th className="sticky left-0 z-20 bg-white dark:bg-gray-800">동작</th>
                 
                 {/* 제출시간 */}
                 <th onClick={() => handleSort('submitted_at')}>
@@ -1615,7 +1979,7 @@ function PatientQuestionnaireTable() {
               {filteredAndSortedData.length > 0 ? (
                 filteredAndSortedData.map((item, index) => (
                   <tr key={index} className="group hover:bg-accent/50">
-                    <td className="sticky left-0 bg-background group-hover:bg-accent/50 text-center">
+                    <td className="sticky left-0 bg-white dark:bg-gray-900 group-hover:bg-accent/50 text-center">
                       <div className="flex flex-col gap-1">
                         <Link
                           to={`/consultation/${item.resident_id}`}
@@ -1676,6 +2040,110 @@ function PatientQuestionnaireTable() {
           </table>
         </div>
       )}
+
+      {/* 테스트 데이터 입력 모달 */}
+      <Modal isOpen={isTestModalOpen} onClose={() => setIsTestModalOpen(false)}>
+        <div className="p-6">
+          <h2 className="text-xl font-bold mb-4">테스트 데이터 입력</h2>
+          <p className="text-sm text-gray-500 mb-4">입력하지 않은 필드는 자동으로 생성됩니다.</p>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">이름</label>
+              <input
+                type="text"
+                name="name"
+                value={testInputData.name}
+                onChange={handleTestInputChange}
+                className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700"
+                placeholder="이름을 입력하세요"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">주민등록번호</label>
+              <input
+                type="text"
+                name="resident_id"
+                value={testInputData.resident_id}
+                onChange={handleTestInputChange}
+                className={`w-full p-2 border ${validationErrors.resident_id ? 'border-red-500' : 'border-gray-300'} rounded-md dark:bg-gray-800 dark:border-gray-700`}
+                placeholder="주민등록번호를 입력하세요 (예: 123456-1234567)"
+                maxLength={14}
+              />
+              {validationErrors.resident_id && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.resident_id}</p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">하이픈(-)은 자동으로 입력됩니다</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">성별</label>
+              <input
+                type="text"
+                value={testInputData.gender}
+                readOnly
+                className="w-full p-2 bg-gray-100 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                placeholder="주민번호 입력 시 자동 설정됩니다"
+              />
+              <p className="text-xs text-gray-500 mt-1">주민등록번호로부터 자동 설정됩니다</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">전화번호</label>
+              <input
+                type="text"
+                name="phone"
+                value={testInputData.phone}
+                onChange={handleTestInputChange}
+                className={`w-full p-2 border ${validationErrors.phone ? 'border-red-500' : 'border-gray-300'} rounded-md dark:bg-gray-800 dark:border-gray-700`}
+                placeholder="전화번호를 입력하세요 (예: 010-1234-5678)"
+                maxLength={13}
+              />
+              {validationErrors.phone && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.phone}</p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">하이픈(-)은 자동으로 입력됩니다</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">내원경로</label>
+              <select
+                name="referral_source"
+                value={testInputData.referral_source}
+                onChange={handleTestInputChange}
+                className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 h-[42px]"
+                aria-label="내원경로 선택"
+              >
+                <option value="" className="dark:bg-gray-800">내원경로 선택</option>
+                <option value="인터넷 검색" className="dark:bg-gray-800">인터넷 검색</option>
+                <option value="SNS" className="dark:bg-gray-800">SNS</option>
+                <option value="지인 소개" className="dark:bg-gray-800">지인 소개</option>
+                <option value="가까운 위치" className="dark:bg-gray-800">가까운 위치</option>
+                <option value="간판/현수막" className="dark:bg-gray-800">간판/현수막</option>
+                <option value="광고" className="dark:bg-gray-800">광고</option>
+                <option value="기타" className="dark:bg-gray-800">기타</option>
+              </select>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setIsTestModalOpen(false)}
+                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+              >
+                취소
+              </button>
+              <button
+                onClick={addTestData}
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                disabled={Object.keys(validationErrors).length > 0}
+              >
+                추가하기
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
