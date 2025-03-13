@@ -32,6 +32,10 @@ interface ConsultationRecord {
   third_contact_date: string | null;
   third_contact_type: '방문' | '전화';
   consultation_memo: string;
+  today_treatment: string;
+  next_treatment: string;
+  appointment_date: string | null;
+  appointment_time: string;
   created_at?: string;
 }
 
@@ -78,7 +82,11 @@ const PatientConsultation = () => {
     second_contact_type: '전화',
     third_contact_date: null,
     third_contact_type: '전화',
-    consultation_memo: ''
+    consultation_memo: '',
+    today_treatment: '',
+    next_treatment: '',
+    appointment_date: null,
+    appointment_time: ''
   });
 
   const [consultations, setConsultations] = useState<ConsultationRecord[]>([]);
@@ -277,7 +285,11 @@ const PatientConsultation = () => {
         second_contact_type: newConsultation.second_contact_type,
         third_contact_date: formatDate(newConsultation.third_contact_date),
         third_contact_type: newConsultation.third_contact_type,
-        consultation_memo: newConsultation.consultation_memo || ''
+        consultation_memo: newConsultation.consultation_memo || '',
+        today_treatment: newConsultation.today_treatment || '',
+        next_treatment: newConsultation.next_treatment || '',
+        appointment_date: formatDate(newConsultation.appointment_date),
+        appointment_time: newConsultation.appointment_time || ''
       };
       
       // 변환된 데이터 출력
@@ -334,7 +346,11 @@ const PatientConsultation = () => {
           cr_count: '0',
           in_count: '0',
           r_count: '0',
-          ca_count: '0'
+          ca_count: '0',
+          today_treatment: '',
+          next_treatment: '',
+          appointment_date: null,
+          appointment_time: ''
         }));
         
         alert('상담 기록이 저장되었습니다.');
@@ -408,6 +424,93 @@ const PatientConsultation = () => {
           </div>
         </div>
       )}
+
+      {/* 치료 및 예약 정보 섹션을 여기로 이동 */}
+      <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md mb-8">
+        <h2 className="text-xl font-semibold mb-4">치료 및 예약 정보</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">당일치료내용</label>
+            <select
+              name="today_treatment"
+              value={newConsultation.today_treatment}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+              title="당일 치료 내용을 선택하세요"
+            >
+              <option value="">선택하세요</option>
+              <option value="구강검진">구강검진</option>
+              <option value="스케일링">스케일링</option>
+              <option value="치아우식증치료">치아우식증치료</option>
+              <option value="신경치료">신경치료</option>
+              <option value="발치">발치</option>
+              <option value="충치치료">충치치료</option>
+              <option value="크라운/인레이">크라운/인레이</option>
+              <option value="임플란트상담">임플란트상담</option>
+              <option value="임플란트식립">임플란트식립</option>
+              <option value="보철치료">보철치료</option>
+              <option value="교정상담">교정상담</option>
+              <option value="교정치료">교정치료</option>
+              <option value="잇몸치료">잇몸치료</option>
+              <option value="미백치료">미백치료</option>
+              <option value="기타">기타</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">다음진료내용</label>
+            <select
+              name="next_treatment"
+              value={newConsultation.next_treatment}
+              onChange={handleInputChange}
+              className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+              title="다음 진료 내용을 선택하세요"
+            >
+              <option value="">선택하세요</option>
+              <option value="구강검진">구강검진</option>
+              <option value="스케일링">스케일링</option>
+              <option value="치아우식증치료">치아우식증치료</option>
+              <option value="신경치료">신경치료</option>
+              <option value="발치">발치</option>
+              <option value="충치치료">충치치료</option>
+              <option value="크라운/인레이">크라운/인레이</option>
+              <option value="임플란트상담">임플란트상담</option>
+              <option value="임플란트식립">임플란트식립</option>
+              <option value="보철치료">보철치료</option>
+              <option value="교정상담">교정상담</option>
+              <option value="교정치료">교정치료</option>
+              <option value="잇몸치료">잇몸치료</option>
+              <option value="미백치료">미백치료</option>
+              <option value="기타">기타</option>
+            </select>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-medium mb-1">예약일</label>
+              <input
+                type="date"
+                name="appointment_date"
+                value={newConsultation.appointment_date || ''}
+                onChange={handleDateChange}
+                className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                title="예약일을 선택하세요"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">예약시간</label>
+              <input
+                type="time"
+                name="appointment_time"
+                value={newConsultation.appointment_time}
+                onChange={handleInputChange}
+                className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                title="예약시간을 선택하세요"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md mb-8">
         <h2 className="text-xl font-semibold mb-4">새 상담 기록</h2>
@@ -748,6 +851,9 @@ const PatientConsultation = () => {
                   <th className="p-2 border border-gray-300 dark:border-gray-700">상담결과</th>
                   <th className="p-2 border border-gray-300 dark:border-gray-700">진단금액</th>
                   <th className="p-2 border border-gray-300 dark:border-gray-700">수납금액</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">당일치료</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">다음진료</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">예약정보</th>
                   <th className="p-2 border border-gray-300 dark:border-gray-700">상담메모</th>
                 </tr>
               </thead>
@@ -773,6 +879,20 @@ const PatientConsultation = () => {
                     </td>
                     <td className="p-2 border border-gray-300 dark:border-gray-700">
                       {consultation.payment_amount?.toLocaleString()}원
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.today_treatment || '-'}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.next_treatment || '-'}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.appointment_date ? (
+                        <>
+                          {new Date(consultation.appointment_date).toLocaleDateString()} 
+                          {consultation.appointment_time ? ` ${consultation.appointment_time}` : ''}
+                        </>
+                      ) : '-'}
                     </td>
                     <td className="p-2 border border-gray-300 dark:border-gray-700">
                       {consultation.consultation_memo}

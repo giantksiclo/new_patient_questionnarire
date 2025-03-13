@@ -1971,69 +1971,89 @@ function PatientQuestionnaireTable() {
           onMouseLeave={handleMouseLeave}
         >
           <table>
-            <thead className="sticky top-0 z-10">
+            <thead className="sticky top-0 z-20">
               <tr className="bg-white dark:bg-gray-800 shadow-sm">
-                <th className="sticky left-0 z-20 bg-white dark:bg-gray-800">동작</th>
+                <th className="sticky left-0 z-30 bg-white dark:bg-gray-800">동작</th>
                 
                 {/* 제출시간 */}
                 <th onClick={() => handleSort('submitted_at')}>
                   제출시간 {sortField === 'submitted_at' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 
-                {/* 상담자 열 추가 */}
+                <th 
+                  onClick={() => handleSort('name')}
+                  className="sticky left-[80px] z-30 bg-white dark:bg-gray-800"
+                >
+                  이름 {sortField === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </th>
+                
+                {/* 상담자 열 */}
                 <th>상담자</th>
                 
                 <th onClick={() => handleSort('at_clinic')}>
                   내원유무 {sortField === 'at_clinic' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
-                <th onClick={() => handleSort('name')}>
-                  이름 {sortField === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </th>
+                
                 <th onClick={() => handleSort('resident_id')}>
                   주민번호 {sortField === 'resident_id' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('visit_reason')}>
                   내원목적 {sortField === 'visit_reason' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('treatment_area')}>
                   불편부위 {sortField === 'treatment_area' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('referral_source')}>
                   내원경로 {sortField === 'referral_source' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('phone')}>
                   전화번호 {sortField === 'phone' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('dental_fears')}>
                   치과공포 {sortField === 'dental_fears' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('has_private_insurance')}>
                   치아보험 {sortField === 'has_private_insurance' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('gender')}>
                   성별 {sortField === 'gender' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('address')}>
                   주소 {sortField === 'address' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('referrer_name')}>
                   소개자 {sortField === 'referrer_name' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('medical_conditions')}>
                   PMH {sortField === 'medical_conditions' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('pregnancy_status')}>
                   임신/흡연 {sortField === 'pregnancy_status' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('emergency_contact_name')}>
                   비상연락처 {sortField === 'emergency_contact_name' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('last_visit')}>
                   최근방문 {sortField === 'last_visit' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('consent')}>
                   정보동의 {sortField === 'consent' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                
                 <th onClick={() => handleSort('additional_info')}>
                   부가정보 {sortField === 'additional_info' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
@@ -2043,7 +2063,7 @@ function PatientQuestionnaireTable() {
               {filteredAndSortedData.length > 0 ? (
                 filteredAndSortedData.map((item, index) => (
                   <tr key={index} className="group hover:bg-accent/50">
-                    <td className="sticky left-0 bg-white dark:bg-gray-900 group-hover:bg-accent/50 text-center">
+                    <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-accent/50 text-center">
                       <div className="flex flex-col gap-1">
                         <Link
                           to={`/consultation/${item.resident_id}`}
@@ -2061,6 +2081,7 @@ function PatientQuestionnaireTable() {
                       </div>
                     </td>
                     <td>{renderDateTime(item.submitted_at)}</td>
+                    <td className="sticky left-[80px] z-10 bg-white dark:bg-gray-900 group-hover:bg-accent/50">{item.name || '-'}</td>
                     
                     {/* 상담자 정보 표시 */}
                     <td>
@@ -2074,7 +2095,6 @@ function PatientQuestionnaireTable() {
                     </td>
                     
                     <td>{renderBoolean(item.at_clinic)}</td>
-                    <td>{item.name || '-'}</td>
                     <td>{item.resident_id || '-'}</td>
                     <td>{item.visit_reason || '-'}</td>
                     <td>{renderTreatmentArea(item.treatment_area, index)}</td>
