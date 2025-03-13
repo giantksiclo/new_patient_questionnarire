@@ -148,16 +148,10 @@ const PatientConsultation = () => {
     return number.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   };
 
-  // 천단위 콤마가 포함된 문자열을 숫자로 변환
-  const parseNumber = (str: string) => {
-    if (!str) return 0;
-    // 모든 비숫자 문자 제거 (콤마, 공백 등)
-    const cleanedStr = str.replace(/[^\d]/g, '');
-    if (cleanedStr === '') return 0;
-    
-    // Number 함수 사용하여 변환 (parseInt보다 더 정확함)
-    const num = Number(cleanedStr);
-    return isNaN(num) ? 0 : num;
+  // 문자열에서 숫자만 추출하는 함수 (콤마 제거)
+  const parseNumber = (value: string) => {
+    if (!value) return 0;
+    return parseInt(value.replace(/[^\d]/g, ''), 10) || 0;
   };
 
   // 수량 증감 핸들러
@@ -190,14 +184,13 @@ const PatientConsultation = () => {
           [name]: formattedValue 
         };
         
-        // 금액 필드 중 하나가 변경된 경우 잔여금액 자동계산
-        // 상담비 - 수납금액 = 잔여금액 (진단비는 계산에서 제외)
-        const consultAmount = parseNumber(name === 'consultation_amount' ? formattedValue : updated.consultation_amount);
-        const paymentAmount = parseNumber(name === 'payment_amount' ? formattedValue : updated.payment_amount);
-        
-        // 잔여금액 계산 (상담비 - 수납금액)
-        const remaining = Math.max(0, consultAmount - paymentAmount);
-        updated.remaining_payment = remaining > 0 ? formatNumber(remaining.toString()) : '0';
+        // 상담금액이나 수납금액이 변경된 경우 잔여금액 자동계산
+        if (name === 'consultation_amount' || name === 'payment_amount') {
+          const consultAmount = parseNumber(updated.consultation_amount);
+          const paymentAmount = parseNumber(updated.payment_amount);
+          const remaining = Math.max(0, consultAmount - paymentAmount);
+          updated.remaining_payment = remaining > 0 ? formatNumber(remaining.toString()) : '0';
+        }
         
         return updated;
       });
@@ -231,12 +224,9 @@ const PatientConsultation = () => {
       // 문자열을 숫자로 변환하는 함수 - 정확한 변환 보장
       const toNumber = (str: string) => {
         if (str === '' || str === null || str === undefined) return 0;
-        // 콤마를 제거하고, 숫자만 추출
-        const cleanedStr = str.replace(/[^\d]/g, '');
-        if (cleanedStr === '') return 0;
-        
-        // parseInt는 최대값에 제한이 있으므로 Number 사용
-        const num = Number(cleanedStr);
+        // 콤마를 제거하고 숫자만 추출
+        const cleanStr = str.replace(/[^\d]/g, '');
+        const num = parseInt(cleanStr, 10);
         return isNaN(num) ? 0 : num;
       };
       
@@ -439,6 +429,7 @@ const PatientConsultation = () => {
                 onChange={handleDateChange} // 날짜만 따로 처리
                 className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
                 required
+                title="상담 일자를 선택하세요"
               />
             </div>
 
@@ -450,6 +441,7 @@ const PatientConsultation = () => {
                 onChange={handleInputChange}
                 className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
                 required
+                title="환자 유형을 선택하세요"
               >
                 <option value="신환">신환</option>
                 <option value="구환">구환</option>
@@ -464,6 +456,7 @@ const PatientConsultation = () => {
                 onChange={handleInputChange}
                 className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
                 required
+                title="진단원장을 선택하세요"
               >
                 <option value="">선택하세요</option>
                 <option value="공성배">공성배</option>
@@ -482,6 +475,7 @@ const PatientConsultation = () => {
                 onChange={handleInputChange}
                 className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
                 required
+                title="상담자를 선택하세요"
               >
                 <option value="">선택하세요</option>
                 <option value="김은정">김은정</option>
@@ -498,6 +492,7 @@ const PatientConsultation = () => {
                 onChange={handleInputChange}
                 className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
                 required
+                title="상담 결과를 선택하세요"
               >
                 <option value="비동의">비동의</option>
                 <option value="부분동의">부분동의</option>
@@ -552,6 +547,7 @@ const PatientConsultation = () => {
                 value={newConsultation.remaining_payment}
                 readOnly
                 className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 bg-gray-100"
+                title="남은 수납 금액"
               />
             </div>
           </div>
@@ -587,6 +583,7 @@ const PatientConsultation = () => {
                       onChange={handleInputChange}
                       className="w-16 p-2 text-center border border-gray-300 text-black bg-white"
                       readOnly
+                      title={`${label} 수량`}
                     />
                     <button
                       type="button"
@@ -609,6 +606,8 @@ const PatientConsultation = () => {
                 value={newConsultation.treatment_details}
                 onChange={handleInputChange}
                 className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 min-h-[100px]"
+                title="치료 계획 및 상세 사항"
+                placeholder="치료 계획이나 상세 내용을 입력하세요"
               />
             </div>
             <div>
@@ -618,6 +617,8 @@ const PatientConsultation = () => {
                 value={newConsultation.non_consent_reason}
                 onChange={handleInputChange}
                 className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 min-h-[100px]"
+                title="비동의 사유"
+                placeholder="비동의 사유를 입력하세요"
               />
             </div>
           </div>
@@ -633,6 +634,7 @@ const PatientConsultation = () => {
                   value={newConsultation.first_contact_date || ''}
                   onChange={handleDateChange}
                   className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                  title="1차 연락일을 선택하세요"
                 />
               </div>
               <div>
@@ -642,6 +644,7 @@ const PatientConsultation = () => {
                   value={newConsultation.first_contact_type}
                   onChange={handleInputChange}
                   className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                  title="1차 연락방법을 선택하세요"
                 >
                   <option value="전화">전화</option>
                   <option value="방문">방문</option>
@@ -658,6 +661,7 @@ const PatientConsultation = () => {
                   value={newConsultation.second_contact_date || ''}
                   onChange={handleDateChange}
                   className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                  title="2차 연락일을 선택하세요"
                 />
               </div>
               <div>
@@ -667,6 +671,7 @@ const PatientConsultation = () => {
                   value={newConsultation.second_contact_type}
                   onChange={handleInputChange}
                   className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                  title="2차 연락방법을 선택하세요"
                 >
                   <option value="전화">전화</option>
                   <option value="방문">방문</option>
@@ -683,6 +688,7 @@ const PatientConsultation = () => {
                   value={newConsultation.third_contact_date || ''}
                   onChange={handleDateChange}
                   className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                  title="3차 연락일을 선택하세요"
                 />
               </div>
               <div>
@@ -692,6 +698,7 @@ const PatientConsultation = () => {
                   value={newConsultation.third_contact_type}
                   onChange={handleInputChange}
                   className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                  title="3차 연락방법을 선택하세요"
                 >
                   <option value="전화">전화</option>
                   <option value="방문">방문</option>
@@ -707,6 +714,8 @@ const PatientConsultation = () => {
               value={newConsultation.consultation_memo}
               onChange={handleInputChange}
               className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 min-h-[120px]"
+              title="상담 메모"
+              placeholder="상담 내용에 대한 메모를 입력하세요"
             />
           </div>
 
@@ -716,7 +725,7 @@ const PatientConsultation = () => {
               disabled={loading}
               className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded disabled:bg-blue-300"
             >
-              {loading ? '저장 중...' : `상담 기록 저장 (기존 상담: ${consultations.length}회)`}
+              {loading ? '저장 중...' : '상담 기록 저장'}
             </button>
           </div>
         </form>
