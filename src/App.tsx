@@ -845,15 +845,6 @@ function PatientQuestionnaireTable() {
     setEndDate(newEndDate);
   };
 
-  // 날짜 문자열을 한국 시간대 기준으로 YYYY-MM-DD 형식으로 변환하는 함수
-  const getDateOnlyString = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    // UTC+9 적용 (한국 시간대)
-    const koreanDate = new Date(date.getTime() + (9 * 60 * 60 * 1000));
-    return koreanDate.toISOString().split('T')[0];
-  };
-
   // 필터링 및 정렬 함수
   const filteredAndSortedData = useMemo(() => {
     // 검색어 필터링
