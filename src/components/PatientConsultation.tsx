@@ -868,12 +868,21 @@ const PatientConsultation = () => {
     <div className="p-4 max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">환자 상담 기록</h1>
-        <button
-          onClick={() => navigate('/')}
-          className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
-        >
-          목록으로 돌아가기
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>대시보드</span>
+          </button>
+          <button
+            onClick={() => navigate('/')}
+            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+          >
+            목록으로 돌아가기
+          </button>
+        </div>
       </div>
 
       {patientInfo && (

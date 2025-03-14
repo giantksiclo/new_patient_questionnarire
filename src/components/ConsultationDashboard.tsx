@@ -14,6 +14,7 @@ import {
   ArcElement
 } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 
 // Chart.js 컴포넌트 등록
 ChartJS.register(
@@ -25,7 +26,8 @@ ChartJS.register(
   ArcElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  ChartDataLabels
 );
 
 // 상담 기록 타입 정의
@@ -127,6 +129,7 @@ const ConsultationDashboard: React.FC = () => {
     try {
       setLoading(true);
       
+      // 상담 정보 먼저 가져오기
       let query = supabase
         .from('patient_consultations')
         .select('*')
@@ -141,14 +144,49 @@ const ConsultationDashboard: React.FC = () => {
         query = query.lte('consultation_date', endDate);
       }
       
-      const { data, error } = await query;
+      const { data: consultationsData, error: consultationsError } = await query;
       
-      if (error) {
-        throw error;
+      if (consultationsError) {
+        throw consultationsError;
       }
       
-      if (data) {
-        setConsultations(data);
+      if (consultationsData && consultationsData.length > 0) {
+        // 모든 환자 ID 추출
+        const patientIds = [...new Set(consultationsData.map(c => c.patient_id))];
+        console.log('환자 ID 목록:', patientIds);
+        
+        // 환자 정보 별도로 가져오기
+        const { data: patientsData, error: patientsError } = await supabase
+          .from('patient_questionnaire')
+          .select('resident_id, name, phone')
+          .in('resident_id', patientIds);
+          
+        if (patientsError) {
+          console.error('환자 정보 불러오기 실패:', patientsError);
+          // 환자 정보를 가져오지 못해도 상담 정보는 표시
+          setConsultations(consultationsData);
+        } else {
+          console.log('가져온 환자 정보:', patientsData);
+          
+          // 환자 정보와 상담 정보 결합
+          const patientsMap = new Map();
+          patientsData?.forEach(patient => {
+            patientsMap.set(patient.resident_id, patient);
+          });
+          
+          const processedData = consultationsData.map(consultation => {
+            const patientInfo = patientsMap.get(consultation.patient_id);
+            return {
+              ...consultation,
+              patient_name: patientInfo?.name || '-',
+              patient_phone: patientInfo?.phone || '-'
+            };
+          });
+          
+          setConsultations(processedData);
+        }
+      } else {
+        setConsultations([]);
       }
     } catch (error) {
       console.error('상담 기록 불러오기 실패:', error);
@@ -764,10 +802,14 @@ const ConsultationDashboard: React.FC = () => {
               <tr className="bg-gray-100 dark:bg-gray-800">
                 <th className="p-2 border border-gray-300 dark:border-gray-700">상담일자</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">환자ID</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">환자이름</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">환자연락처</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">진단원장</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">상담자</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">상담결과</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">진단금액</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">상담금액</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">비동의금액</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">비동의 사유</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">상세보기</th>
               </tr>
@@ -788,6 +830,12 @@ const ConsultationDashboard: React.FC = () => {
                     {consultation.patient_id}
                   </td>
                   <td className="p-2 border border-gray-300 dark:border-gray-700">
+                    {consultation.patient_name || '-'}
+                  </td>
+                  <td className="p-2 border border-gray-300 dark:border-gray-700">
+                    {consultation.patient_phone || '-'}
+                  </td>
+                  <td className="p-2 border border-gray-300 dark:border-gray-700">
                     {consultation.doctor}
                   </td>
                   <td className="p-2 border border-gray-300 dark:border-gray-700">
@@ -801,7 +849,17 @@ const ConsultationDashboard: React.FC = () => {
                   <td className="p-2 border border-gray-300 dark:border-gray-700">
                     {typeof consultation.diagnosis_amount === 'number'
                       ? consultation.diagnosis_amount.toLocaleString() + '원'
-                      : consultation.diagnosis_amount}
+                      : consultation.diagnosis_amount || '-'}
+                  </td>
+                  <td className="p-2 border border-gray-300 dark:border-gray-700">
+                    {typeof consultation.consultation_amount === 'number'
+                      ? consultation.consultation_amount.toLocaleString() + '원'
+                      : consultation.consultation_amount || '-'}
+                  </td>
+                  <td className="p-2 border border-gray-300 dark:border-gray-700 font-medium text-red-500">
+                    {(typeof consultation.diagnosis_amount === 'number' && typeof consultation.consultation_amount === 'number')
+                      ? (consultation.diagnosis_amount - consultation.consultation_amount).toLocaleString() + '원'
+                      : '-'}
                   </td>
                   <td className="p-2 border border-gray-300 dark:border-gray-700 max-w-xs truncate">
                     {consultation.non_consent_reason || '-'}
@@ -818,7 +876,7 @@ const ConsultationDashboard: React.FC = () => {
               ))}
               {consultations.filter(c => c.consultation_result === '비동의' || c.consultation_result === '부분동의').length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-4 text-center">미동의/부분동의 환자가 없습니다.</td>
+                  <td colSpan={12} className="p-4 text-center">미동의/부분동의 환자가 없습니다.</td>
                 </tr>
               )}
             </tbody>
@@ -842,70 +900,314 @@ const ConsultationDashboard: React.FC = () => {
         </div>
         
         {dateAmountStats.length > 0 ? (
-          <div className="h-80">
-            <Bar 
-              data={{
-                labels: dateAmountStats.map(stat => stat.date),
-                datasets: [
-                  {
-                    label: '진단금액',
-                    data: dateAmountStats.map(stat => stat.amounts.diagnosis),
-                    backgroundColor: 'rgba(53, 162, 235, 0.5)',
-                    borderColor: 'rgba(53, 162, 235, 0.8)',
-                    borderWidth: 1
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="h-80">
+              <Bar 
+                data={{
+                  labels: dateAmountStats.map(stat => stat.date),
+                  datasets: [
+                    {
+                      label: '진단금액',
+                      data: dateAmountStats.map(stat => stat.amounts.diagnosis),
+                      backgroundColor: 'rgba(53, 162, 235, 0.5)',
+                      borderColor: 'rgba(53, 162, 235, 0.8)',
+                      borderWidth: 1,
+                      stack: 'Stack 0',
+                      datalabels: {
+                        align: 'top',
+                        anchor: 'end',
+                        color: 'white',
+                        font: {
+                          weight: 'bold',
+                          size: 10
+                        },
+                        formatter: (value: number) => value > 0 ? value.toLocaleString() : ''
+                      }
+                    },
+                    {
+                      label: '상담금액',
+                      data: dateAmountStats.map(stat => stat.amounts.consultation),
+                      backgroundColor: 'rgba(255, 159, 64, 0.7)',
+                      borderColor: 'rgba(255, 159, 64, 1)',
+                      borderWidth: 1,
+                      stack: 'Stack 0',
+                      datalabels: {
+                        align: 'center',
+                        anchor: 'center',
+                        color: 'white',
+                        font: {
+                          weight: 'bold',
+                          size: 10
+                        },
+                        formatter: (value: number, _context: any) => {
+                          const dataIndex = _context.dataIndex;
+                          const diagnosisAmount = dateAmountStats[dataIndex].amounts.diagnosis;
+                          if (diagnosisAmount <= 0 || value <= 0) return '';
+                          const percentage = Math.round((value / diagnosisAmount) * 100);
+                          return `${value.toLocaleString()}\n(${percentage}%)`;
+                        }
+                      }
+                    },
+                    {
+                      label: '수납금액',
+                      data: dateAmountStats.map(stat => stat.amounts.payment),
+                      backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                      borderColor: 'rgba(75, 192, 192, 1)',
+                      borderWidth: 1,
+                      stack: 'Stack 1',
+                      datalabels: {
+                        align: 'center',
+                        anchor: 'center',
+                        color: 'white',
+                        font: {
+                          weight: 'bold',
+                          size: 10
+                        },
+                        formatter: (value: number) => value > 0 ? value.toLocaleString() : ''
+                      }
+                    },
+                    {
+                      label: '남은금액',
+                      data: dateAmountStats.map(stat => stat.amounts.remaining),
+                      backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                      borderColor: 'rgba(255, 99, 132, 1)',
+                      borderWidth: 1,
+                      stack: 'Stack 1',
+                      datalabels: {
+                        align: 'center',
+                        anchor: 'center',
+                        color: 'white',
+                        font: {
+                          weight: 'bold'
+                        },
+                        formatter: (value: number) => value !== 0 ? value.toLocaleString() : ''
+                      }
+                    }
+                  ]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  scales: {
+                    x: {
+                      stacked: true
+                    },
+                    y: {
+                      stacked: false,
+                      beginAtZero: true,
+                      ticks: {
+                        // @ts-ignore
+                        callback: function(value) {
+                          return value.toLocaleString() + '원';
+                        }
+                      }
+                    }
                   },
-                  {
-                    label: '상담금액',
-                    data: dateAmountStats.map(stat => stat.amounts.consultation),
-                    backgroundColor: 'rgba(255, 159, 64, 0.5)',
-                    borderColor: 'rgba(255, 159, 64, 0.8)',
-                    borderWidth: 1
-                  },
-                  {
-                    label: '수납금액',
-                    data: dateAmountStats.map(stat => stat.amounts.payment),
-                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
-                    borderColor: 'rgba(75, 192, 192, 0.8)',
-                    borderWidth: 1
-                  },
-                  {
-                    label: '남은금액',
-                    data: dateAmountStats.map(stat => stat.amounts.remaining),
-                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                    borderColor: 'rgba(255, 99, 132, 0.8)',
-                    borderWidth: 1
-                  }
-                ]
-              }}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                  y: {
-                    beginAtZero: true,
-                    ticks: {
-                      // @ts-ignore
-                      callback: function(value) {
-                        return value.toLocaleString() + '원';
+                  plugins: {
+                    datalabels: {
+                      font: {
+                        size: 10,
+                        weight: 'bold'
+                      },
+                      offset: 0,
+                      padding: 2,
+                      color: 'white',
+                      formatter: function(value: number, _context: any) {
+                        // 개별 데이터셋의 포맷터가 우선적으로 적용됨
+                        return value !== 0 ? value.toLocaleString() : '';
+                      }
+                    },
+                    tooltip: {
+                      callbacks: {
+                        // @ts-ignore
+                        label: function(context) {
+                          const label = context.dataset.label || '';
+                          const value = context.raw as number;
+                          const formattedValue = value.toLocaleString() + '원';
+                          
+                          if (label === '수납금액' || label === '남은금액') {
+                            const dataIndex = context.dataIndex;
+                            const stat = dateAmountStats[dataIndex];
+                            const consultationAmount = stat.amounts.consultation;
+                            const percentage = Math.round((value / consultationAmount) * 100);
+                            return `${label}: ${formattedValue} (상담금액의 ${percentage}%)`;
+                          } else if (label === '진단금액') {
+                            return `${label}: ${formattedValue}`;
+                          } else if (label === '상담금액') {
+                            const dataIndex = context.dataIndex;
+                            const stat = dateAmountStats[dataIndex];
+                            const diagnosisAmount = stat.amounts.diagnosis;
+                            const percentage = diagnosisAmount > 0 
+                              ? Math.round((value / diagnosisAmount) * 100) 
+                              : 0;
+                            return `${label}: ${formattedValue} (진단금액의 ${percentage}%)`;
+                          }
+                          return `${label}: ${formattedValue}`;
+                        },
+                        // @ts-ignore
+                        afterLabel: function(context) {
+                          const label = context.dataset.label || '';
+                          const dataIndex = context.dataIndex;
+                          const stat = dateAmountStats[dataIndex];
+                          
+                          if (label === '진단금액') {
+                            const consultationAmount = stat.amounts.consultation;
+                            const percentage = stat.amounts.diagnosis > 0 
+                              ? Math.round((consultationAmount / stat.amounts.diagnosis) * 100) 
+                              : 0;
+                            return `상담금액: ${consultationAmount.toLocaleString()}원 (${percentage}%)`;
+                          } else if (label === '수납금액') {
+                            return `상담금액 합계: ${stat.amounts.consultation.toLocaleString()}원`;
+                          }
+                          return '';
+                        }
+                      }
+                    },
+                    legend: {
+                      position: 'bottom',
+                      display: true,
+                      labels: {
+                        font: {
+                          size: 10
+                        },
+                        boxWidth: 12
+                      }
+                    },
+                    title: {
+                      display: true,
+                      text: '* 수납금액 + 남은금액 = 상담금액',
+                      position: 'bottom',
+                      padding: {
+                        top: 10,
+                        bottom: 0
+                      },
+                      font: {
+                        size: 12,
+                        style: 'italic'
                       }
                     }
                   }
-                },
-                plugins: {
-                  tooltip: {
-                    callbacks: {
-                      // @ts-ignore
-                      label: function(context) {
-                        return `${context.dataset.label}: ${parseInt(context.raw as string).toLocaleString()}원`;
+                }}
+              />
+            </div>
+            
+            <div className="h-80">
+              <h3 className="text-lg font-medium mb-3 text-center">상담자별 목표 달성률</h3>
+              <Bar 
+                data={{
+                  labels: consultantAmountStats.map(stat => stat.consultant),
+                  datasets: [
+                    {
+                      label: '수납금액',
+                      data: consultantAmountStats.map(stat => stat.amounts.payment),
+                      backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                      borderColor: 'rgba(75, 192, 192, 1)',
+                      borderWidth: 1,
+                      stack: 'Stack 0',
+                      datalabels: {
+                        align: 'end',
+                        anchor: 'end',
+                        color: 'white',
+                        font: {
+                          weight: 'bold',
+                          size: 10
+                        },
+                        formatter: (value: number) => {
+                          const percentage = Math.round((value / 100000000) * 100);
+                          return `${value.toLocaleString()}원\n(${percentage}%)`;
+                        }
+                      }
+                    },
+                    {
+                      label: '목표 잔여금액',
+                      data: consultantAmountStats.map(stat => Math.max(0, 100000000 - stat.amounts.payment)),
+                      backgroundColor: 'rgba(220, 220, 220, 0.5)',
+                      borderColor: 'rgba(220, 220, 220, 0.8)',
+                      borderWidth: 1,
+                      stack: 'Stack 0',
+                      datalabels: {
+                        display: false
+                      }
+                    }
+                  ]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  indexAxis: 'y',
+                  scales: {
+                    x: {
+                      stacked: true,
+                      ticks: {
+                        // @ts-ignore
+                        callback: function(value) {
+                          return value.toLocaleString() + '원';
+                        }
+                      },
+                      max: 100000000 // 목표금액 설정
+                    },
+                    y: {
+                      stacked: true,
+                      ticks: {
+                        font: {
+                          weight: 'bold'
+                        }
                       }
                     }
                   },
-                  legend: {
-                    position: 'bottom'
+                  plugins: {
+                    tooltip: {
+                      callbacks: {
+                        // @ts-ignore
+                        label: function(context) {
+                          const label = context.dataset.label || '';
+                          const value = context.raw as number;
+                          const formattedValue = value.toLocaleString() + '원';
+                          
+                          if (label === '수납금액') {
+                            const percentage = Math.round((value / 100000000) * 100);
+                            return `${label}: ${formattedValue} (목표의 ${percentage}%)`;
+                          }
+                          
+                          return `${label}: ${formattedValue}`;
+                        },
+                        // @ts-ignore
+                        afterLabel: function(context) {
+                          const label = context.dataset.label || '';
+                          if (label === '수납금액') {
+                            return `목표금액: 100,000,000원`;
+                          }
+                          return '';
+                        }
+                      }
+                    },
+                    legend: {
+                      position: 'bottom',
+                      display: true,
+                      labels: {
+                        font: {
+                          size: 10
+                        },
+                        boxWidth: 12
+                      }
+                    },
+                    title: {
+                      display: true,
+                      text: '월간 목표금액: 1억원',
+                      position: 'bottom',
+                      padding: {
+                        top: 10,
+                        bottom: 0
+                      },
+                      font: {
+                        size: 12,
+                        style: 'italic'
+                      }
+                    }
                   }
-                }
-              }}
-            />
+                }}
+              />
+            </div>
           </div>
         ) : (
           <div className="text-center py-10 text-gray-500 dark:text-gray-400">
@@ -929,11 +1231,31 @@ const ConsultationDashboard: React.FC = () => {
                       label: '상담금액',
                       data: consultantAmountStats.map(stat => stat.amounts.consultation),
                       backgroundColor: 'rgba(255, 159, 64, 0.5)',
+                      datalabels: {
+                        align: 'end',
+                        anchor: 'end',
+                        color: 'white',
+                        font: {
+                          weight: 'bold',
+                          size: 10
+                        },
+                        formatter: (value: number) => value > 0 ? value.toLocaleString() : ''
+                      }
                     },
                     {
                       label: '수납금액',
                       data: consultantAmountStats.map(stat => stat.amounts.payment),
                       backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                      datalabels: {
+                        align: 'end',
+                        anchor: 'end',
+                        color: 'white',
+                        font: {
+                          weight: 'bold',
+                          size: 10
+                        },
+                        formatter: (value: number) => value > 0 ? value.toLocaleString() : ''
+                      }
                     }
                   ]
                 }}
@@ -961,67 +1283,188 @@ const ConsultationDashboard: React.FC = () => {
                       }
                     },
                     legend: {
-                      position: 'bottom'
+                      position: 'bottom',
+                      display: true,
+                      labels: {
+                        font: {
+                          size: 10
+                        },
+                        boxWidth: 12
+                      }
                     }
                   }
                 }}
               />
             </div>
             
-            <div className="h-80">
-              <Pie
-                data={{
-                  labels: consultantAmountStats.map(stat => stat.consultant),
-                  datasets: [
-                    {
-                      data: consultantAmountStats.map(stat => stat.amounts.consultation),
-                      backgroundColor: [
-                        'rgba(255, 99, 132, 0.6)',
-                        'rgba(54, 162, 235, 0.6)',
-                        'rgba(255, 206, 86, 0.6)',
-                        'rgba(75, 192, 192, 0.6)',
-                        'rgba(153, 102, 255, 0.6)',
-                        'rgba(255, 159, 64, 0.6)',
-                        'rgba(199, 199, 199, 0.6)'
-                      ],
-                      borderColor: [
-                        'rgba(255, 99, 132, 1)',
-                        'rgba(54, 162, 235, 1)',
-                        'rgba(255, 206, 86, 1)',
-                        'rgba(75, 192, 192, 1)',
-                        'rgba(153, 102, 255, 1)',
-                        'rgba(255, 159, 64, 1)',
-                        'rgba(199, 199, 199, 1)'
-                      ],
-                      borderWidth: 1
-                    }
-                  ]
-                }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'bottom',
-                    },
-                    tooltip: {
-                      callbacks: {
-                        // @ts-ignore
-                        label: function(context) {
-                          const value = context.raw as number;
-                          const total = (context.dataset.data as number[]).reduce((a, b) => a + b, 0);
-                          const percentage = Math.round((value / total) * 100);
-                          return `${context.label}: ${value.toLocaleString()}원 (${percentage}%)`;
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="h-80">
+                <Pie
+                  data={{
+                    labels: consultantAmountStats.map(stat => stat.consultant),
+                    datasets: [
+                      {
+                        data: consultantAmountStats.map(stat => stat.amounts.consultation),
+                        backgroundColor: [
+                          'rgba(255, 99, 132, 0.6)',
+                          'rgba(54, 162, 235, 0.6)',
+                          'rgba(255, 206, 86, 0.6)',
+                          'rgba(75, 192, 192, 0.6)',
+                          'rgba(153, 102, 255, 0.6)',
+                          'rgba(255, 159, 64, 0.6)',
+                          'rgba(199, 199, 199, 0.6)'
+                        ],
+                        borderColor: [
+                          'rgba(255, 99, 132, 1)',
+                          'rgba(54, 162, 235, 1)',
+                          'rgba(255, 206, 86, 1)',
+                          'rgba(75, 192, 192, 1)',
+                          'rgba(153, 102, 255, 1)',
+                          'rgba(255, 159, 64, 1)',
+                          'rgba(199, 199, 199, 1)'
+                        ],
+                        borderWidth: 1,
+                        datalabels: {
+                          color: 'white',
+                          font: {
+                            weight: 'bold',
+                            size: 10
+                          },
+                          formatter: (value: number, context: any) => {
+                            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                            const percentage = Math.round((value / total) * 100);
+                            return `${value.toLocaleString()}원\n(${percentage}%)`;
+                          }
                         }
                       }
-                    },
-                    title: {
-                      display: true,
-                      text: '상담금액 비율'
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'bottom',
+                        display: true,
+                        labels: {
+                          font: {
+                            size: 10
+                          },
+                          boxWidth: 12
+                        }
+                      },
+                      tooltip: {
+                        callbacks: {
+                          // @ts-ignore
+                          label: function(context) {
+                            const value = context.raw as number;
+                            const total = (context.dataset.data as number[]).reduce((a, b) => a + b, 0);
+                            const percentage = Math.round((value / total) * 100);
+                            return `${context.label}: ${value.toLocaleString()}원 (${percentage}%)`;
+                          }
+                        },
+                        title: {
+                          display: true,
+                          text: '상담금액 비율',
+                          font: {
+                            size: 16,
+                            weight: 'bold'
+                          },
+                          color: '#333',
+                          padding: {
+                            top: 10,
+                            bottom: 10
+                          }
+                        }
+                      }
                     }
-                  }
-                }}
-              />
+                  }}
+                />
+              </div>
+              
+              <div className="h-80">
+                <Pie
+                  data={{
+                    labels: consultantAmountStats.map(stat => stat.consultant),
+                    datasets: [
+                      {
+                        data: consultantAmountStats.map(stat => stat.amounts.payment),
+                        backgroundColor: [
+                          'rgba(255, 99, 132, 0.6)',
+                          'rgba(54, 162, 235, 0.6)',
+                          'rgba(255, 206, 86, 0.6)',
+                          'rgba(75, 192, 192, 0.6)',
+                          'rgba(153, 102, 255, 0.6)',
+                          'rgba(255, 159, 64, 0.6)',
+                          'rgba(199, 199, 199, 0.6)'
+                        ],
+                        borderColor: [
+                          'rgba(255, 99, 132, 1)',
+                          'rgba(54, 162, 235, 1)',
+                          'rgba(255, 206, 86, 1)',
+                          'rgba(75, 192, 192, 1)',
+                          'rgba(153, 102, 255, 1)',
+                          'rgba(255, 159, 64, 1)',
+                          'rgba(199, 199, 199, 1)'
+                        ],
+                        borderWidth: 1,
+                        datalabels: {
+                          color: 'white',
+                          font: {
+                            weight: 'bold',
+                            size: 10
+                          },
+                          formatter: (value: number, context: any) => {
+                            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                            const percentage = Math.round((value / total) * 100);
+                            return `${value.toLocaleString()}원\n(${percentage}%)`;
+                          }
+                        }
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'bottom',
+                        display: true,
+                        labels: {
+                          font: {
+                            size: 10
+                          },
+                          boxWidth: 12
+                        }
+                      },
+                      tooltip: {
+                        callbacks: {
+                          // @ts-ignore
+                          label: function(context) {
+                            const value = context.raw as number;
+                            const total = (context.dataset.data as number[]).reduce((a, b) => a + b, 0);
+                            const percentage = Math.round((value / total) * 100);
+                            return `${context.label}: ${value.toLocaleString()}원 (${percentage}%)`;
+                          }
+                        },
+                        title: {
+                          display: true,
+                          text: '수납금액 비율',
+                          font: {
+                            size: 16,
+                            weight: 'bold'
+                          },
+                          color: '#333',
+                          padding: {
+                            top: 10,
+                            bottom: 10
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
             </div>
           </div>
         ) : (
