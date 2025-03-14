@@ -1,6 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  PointElement,
+  LineElement,
+  ArcElement
+} from 'chart.js';
+import { Bar, Line, Pie } from 'react-chartjs-2';
+
+// Chart.js 컴포넌트 등록
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 // 상담 기록 타입 정의
 interface ConsultationRecord {
@@ -28,6 +54,26 @@ interface ConsultantStats {
   consentRate: number;
 }
 
+// 금액 통계 타입 정의
+interface AmountStats {
+  diagnosis: number;
+  consultation: number;
+  payment: number;
+  remaining: number;
+}
+
+// 날짜별 금액 통계 타입
+interface DateAmountStats {
+  date: string;
+  amounts: AmountStats;
+}
+
+// 상담자별 금액 통계 타입
+interface ConsultantAmountStats {
+  consultant: string;
+  amounts: AmountStats;
+}
+
 // 날짜 필터 타입
 type DateRange = 'all' | 'today' | 'yesterday' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -41,6 +87,9 @@ const ConsultationDashboard: React.FC = () => {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [dateAmountStats, setDateAmountStats] = useState<DateAmountStats[]>([]);
+  const [consultantAmountStats, setConsultantAmountStats] = useState<ConsultantAmountStats[]>([]);
+  const [periodType, setPeriodType] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
 
   // 상담 기록 가져오기
   useEffect(() => {
@@ -58,6 +107,20 @@ const ConsultationDashboard: React.FC = () => {
   useEffect(() => {
     setDateRangeValues(dateRange);
   }, [dateRange]);
+
+  // 날짜별 금액 통계 계산
+  useEffect(() => {
+    if (consultations.length > 0) {
+      calculateAmountStatsByDate();
+    }
+  }, [consultations, periodType]);
+
+  // 상담자별 금액 통계 계산
+  useEffect(() => {
+    if (consultations.length > 0) {
+      calculateAmountStatsByConsultant();
+    }
+  }, [consultations]);
 
   // 상담 기록 가져오기
   const fetchConsultations = async () => {
@@ -248,6 +311,147 @@ const ConsultationDashboard: React.FC = () => {
       return `${formatDate(startDate)} ~ ${formatDate(endDate)}`;
     }
     return '';
+  };
+
+  // 날짜별 금액 통계 계산 함수
+  const calculateAmountStatsByDate = () => {
+    // 날짜 그룹화 기준 설정
+    const getGroupKey = (date: Date) => {
+      if (periodType === 'daily') {
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD
+      } else if (periodType === 'weekly') {
+        // 주의 시작일(월요일)을 키로 사용
+        const dayOfWeek = date.getDay() || 7; // 일요일(0)을 7로 변환
+        const monday = new Date(date);
+        monday.setDate(date.getDate() - (dayOfWeek - 1));
+        return monday.toISOString().split('T')[0];
+      } else {
+        // 월 단위 그룹화
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      }
+    };
+
+    // 날짜 표시 포맷 설정
+    const formatGroupKey = (key: string) => {
+      if (periodType === 'daily') {
+        const date = new Date(key);
+        return `${date.getMonth() + 1}/${date.getDate()}`;
+      } else if (periodType === 'weekly') {
+        const date = new Date(key);
+        return `${date.getMonth() + 1}/${date.getDate()} 주`;
+      } else {
+        const [year, month] = key.split('-');
+        return `${year}년 ${month}월`;
+      }
+    };
+
+    // 날짜별로 데이터 그룹화
+    const dateGroups: Record<string, ConsultationRecord[]> = {};
+    
+    consultations.forEach(consultation => {
+      if (!consultation.consultation_date) return;
+      
+      const date = new Date(consultation.consultation_date);
+      const groupKey = getGroupKey(date);
+      
+      if (!dateGroups[groupKey]) {
+        dateGroups[groupKey] = [];
+      }
+      
+      dateGroups[groupKey].push(consultation);
+    });
+
+    // 날짜별 금액 통계 계산
+    const stats: DateAmountStats[] = Object.keys(dateGroups)
+      .sort()
+      .map(key => {
+        const records = dateGroups[key];
+        const displayDate = formatGroupKey(key);
+        
+        const diagnosisAmount = records.reduce((sum, record) => 
+          sum + (typeof record.diagnosis_amount === 'number' ? record.diagnosis_amount : 0), 0);
+        
+        const consultationAmount = records.reduce((sum, record) => 
+          sum + (typeof record.consultation_amount === 'number' ? record.consultation_amount : 0), 0);
+        
+        const paymentAmount = records.reduce((sum, record) => 
+          sum + (typeof record.payment_amount === 'number' ? record.payment_amount : 0), 0);
+        
+        const remainingAmount = consultationAmount - paymentAmount;
+        
+        return {
+          date: displayDate,
+          amounts: {
+            diagnosis: diagnosisAmount,
+            consultation: consultationAmount,
+            payment: paymentAmount,
+            remaining: remainingAmount
+          }
+        };
+      });
+
+    // 최근 6개 기간만 표시 (역순으로 정렬된 배열에서 앞의 6개 추출하고 다시 역순으로)
+    const recentStats = [...stats].reverse().slice(0, 6).reverse();
+    setDateAmountStats(recentStats);
+  };
+
+  // 상담자별 금액 통계 계산 함수
+  const calculateAmountStatsByConsultant = () => {
+    // 상담자별로 데이터 그룹화
+    const consultantGroups: Record<string, ConsultationRecord[]> = {};
+    
+    consultations.forEach(consultation => {
+      if (!consultation.consultant) return;
+      
+      if (!consultantGroups[consultation.consultant]) {
+        consultantGroups[consultation.consultant] = [];
+      }
+      
+      consultantGroups[consultation.consultant].push(consultation);
+    });
+
+    // 상담자별 금액 통계 계산
+    const stats: ConsultantAmountStats[] = Object.keys(consultantGroups)
+      .filter(Boolean)
+      .map(consultant => {
+        const records = consultantGroups[consultant];
+        
+        const diagnosisAmount = records.reduce((sum, record) => 
+          sum + (typeof record.diagnosis_amount === 'number' ? record.diagnosis_amount : 0), 0);
+        
+        const consultationAmount = records.reduce((sum, record) => 
+          sum + (typeof record.consultation_amount === 'number' ? record.consultation_amount : 0), 0);
+        
+        const paymentAmount = records.reduce((sum, record) => 
+          sum + (typeof record.payment_amount === 'number' ? record.payment_amount : 0), 0);
+        
+        const remainingAmount = consultationAmount - paymentAmount;
+        
+        return {
+          consultant,
+          amounts: {
+            diagnosis: diagnosisAmount,
+            consultation: consultationAmount,
+            payment: paymentAmount,
+            remaining: remainingAmount
+          }
+        };
+      });
+
+    // 금액 기준 내림차순 정렬
+    stats.sort((a, b) => b.amounts.consultation - a.amounts.consultation);
+    
+    setConsultantAmountStats(stats);
+  };
+
+  // 금액 표시 포맷 (천 단위 콤마)
+  const formatAmount = (amount: number) => {
+    return `${amount.toLocaleString()}원`;
+  };
+
+  // 기간 유형 변경 핸들러
+  const handlePeriodTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setPeriodType(e.target.value as 'daily' | 'weekly' | 'monthly');
   };
 
   if (loading) {
@@ -617,6 +821,257 @@ const ConsultationDashboard: React.FC = () => {
                   <td colSpan={8} className="p-4 text-center">미동의/부분동의 환자가 없습니다.</td>
                 </tr>
               )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 금액 통계 섹션 - 기간별 */}
+      <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">기간별 금액 통계</h2>
+          <select
+            value={periodType}
+            onChange={handlePeriodTypeChange}
+            className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+          >
+            <option value="daily">일별</option>
+            <option value="weekly">주별</option>
+            <option value="monthly">월별</option>
+          </select>
+        </div>
+        
+        {dateAmountStats.length > 0 ? (
+          <div className="h-80">
+            <Bar 
+              data={{
+                labels: dateAmountStats.map(stat => stat.date),
+                datasets: [
+                  {
+                    label: '진단금액',
+                    data: dateAmountStats.map(stat => stat.amounts.diagnosis),
+                    backgroundColor: 'rgba(53, 162, 235, 0.5)',
+                    borderColor: 'rgba(53, 162, 235, 0.8)',
+                    borderWidth: 1
+                  },
+                  {
+                    label: '상담금액',
+                    data: dateAmountStats.map(stat => stat.amounts.consultation),
+                    backgroundColor: 'rgba(255, 159, 64, 0.5)',
+                    borderColor: 'rgba(255, 159, 64, 0.8)',
+                    borderWidth: 1
+                  },
+                  {
+                    label: '수납금액',
+                    data: dateAmountStats.map(stat => stat.amounts.payment),
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 0.8)',
+                    borderWidth: 1
+                  },
+                  {
+                    label: '남은금액',
+                    data: dateAmountStats.map(stat => stat.amounts.remaining),
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 0.8)',
+                    borderWidth: 1
+                  }
+                ]
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      callback: function(value) {
+                        return value.toLocaleString() + '원';
+                      }
+                    }
+                  }
+                },
+                plugins: {
+                  tooltip: {
+                    callbacks: {
+                      label: function(context) {
+                        return `${context.dataset.label}: ${parseInt(context.raw as string).toLocaleString()}원`;
+                      }
+                    }
+                  },
+                  legend: {
+                    position: 'bottom'
+                  }
+                }
+              }}
+            />
+          </div>
+        ) : (
+          <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+            데이터가 없습니다.
+          </div>
+        )}
+      </div>
+
+      {/* 금액 통계 섹션 - 상담자별 */}
+      <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
+        <h2 className="text-xl font-semibold mb-4">상담자별 금액 통계</h2>
+        
+        {consultantAmountStats.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="h-80">
+              <Bar 
+                data={{
+                  labels: consultantAmountStats.map(stat => stat.consultant),
+                  datasets: [
+                    {
+                      label: '상담금액',
+                      data: consultantAmountStats.map(stat => stat.amounts.consultation),
+                      backgroundColor: 'rgba(255, 159, 64, 0.5)',
+                    },
+                    {
+                      label: '수납금액',
+                      data: consultantAmountStats.map(stat => stat.amounts.payment),
+                      backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    }
+                  ]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      ticks: {
+                        callback: function(value) {
+                          return value.toLocaleString() + '원';
+                        }
+                      }
+                    }
+                  },
+                  plugins: {
+                    tooltip: {
+                      callbacks: {
+                        label: function(context) {
+                          return `${context.dataset.label}: ${parseInt(context.raw as string).toLocaleString()}원`;
+                        }
+                      }
+                    },
+                    legend: {
+                      position: 'bottom'
+                    }
+                  }
+                }}
+              />
+            </div>
+            
+            <div className="h-80">
+              <Pie
+                data={{
+                  labels: consultantAmountStats.map(stat => stat.consultant),
+                  datasets: [
+                    {
+                      data: consultantAmountStats.map(stat => stat.amounts.consultation),
+                      backgroundColor: [
+                        'rgba(255, 99, 132, 0.6)',
+                        'rgba(54, 162, 235, 0.6)',
+                        'rgba(255, 206, 86, 0.6)',
+                        'rgba(75, 192, 192, 0.6)',
+                        'rgba(153, 102, 255, 0.6)',
+                        'rgba(255, 159, 64, 0.6)',
+                        'rgba(199, 199, 199, 0.6)'
+                      ],
+                      borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(199, 199, 199, 1)'
+                      ],
+                      borderWidth: 1
+                    }
+                  ]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      position: 'bottom',
+                    },
+                    tooltip: {
+                      callbacks: {
+                        label: function(context) {
+                          const value = context.raw as number;
+                          const total = (context.dataset.data as number[]).reduce((a, b) => a + b, 0);
+                          const percentage = Math.round((value / total) * 100);
+                          return `${context.label}: ${value.toLocaleString()}원 (${percentage}%)`;
+                        }
+                      }
+                    },
+                    title: {
+                      display: true,
+                      text: '상담금액 비율'
+                    }
+                  }
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+            데이터가 없습니다.
+          </div>
+        )}
+        
+        {/* 상담자별 금액 통계 표 */}
+        <div className="mt-8 overflow-x-auto">
+          <table className="min-w-full border border-gray-300 dark:border-gray-700">
+            <thead>
+              <tr className="bg-gray-100 dark:bg-gray-800">
+                <th className="p-2 border border-gray-300 dark:border-gray-700">상담자</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">진단금액</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">상담금액</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">수납금액</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">남은금액</th>
+              </tr>
+            </thead>
+            <tbody>
+              {consultantAmountStats.map((stat) => (
+                <tr key={stat.consultant} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td className="p-2 border border-gray-300 dark:border-gray-700 font-medium">{stat.consultant}</td>
+                  <td className="p-2 border border-gray-300 dark:border-gray-700 text-right">
+                    {formatAmount(stat.amounts.diagnosis)}
+                  </td>
+                  <td className="p-2 border border-gray-300 dark:border-gray-700 text-right bg-orange-50 dark:bg-orange-900/20">
+                    {formatAmount(stat.amounts.consultation)}
+                  </td>
+                  <td className="p-2 border border-gray-300 dark:border-gray-700 text-right bg-emerald-50 dark:bg-emerald-900/20">
+                    {formatAmount(stat.amounts.payment)}
+                  </td>
+                  <td className="p-2 border border-gray-300 dark:border-gray-700 text-right bg-red-50 dark:bg-red-900/20">
+                    {formatAmount(stat.amounts.remaining)}
+                  </td>
+                </tr>
+              ))}
+              
+              {/* 총계 행 */}
+              <tr className="bg-gray-200 dark:bg-gray-700 font-bold">
+                <td className="p-2 border border-gray-300 dark:border-gray-700">총계</td>
+                <td className="p-2 border border-gray-300 dark:border-gray-700 text-right">
+                  {formatAmount(consultantAmountStats.reduce((sum, stat) => sum + stat.amounts.diagnosis, 0))}
+                </td>
+                <td className="p-2 border border-gray-300 dark:border-gray-700 text-right">
+                  {formatAmount(consultantAmountStats.reduce((sum, stat) => sum + stat.amounts.consultation, 0))}
+                </td>
+                <td className="p-2 border border-gray-300 dark:border-gray-700 text-right">
+                  {formatAmount(consultantAmountStats.reduce((sum, stat) => sum + stat.amounts.payment, 0))}
+                </td>
+                <td className="p-2 border border-gray-300 dark:border-gray-700 text-right">
+                  {formatAmount(consultantAmountStats.reduce((sum, stat) => sum + stat.amounts.remaining, 0))}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
