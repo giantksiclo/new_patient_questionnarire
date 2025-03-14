@@ -6,6 +6,7 @@ import { Search, X } from 'lucide-react';
 import { Toast } from './components/Toast';
 import { createHashRouter, RouterProvider, Navigate, Route, createRoutesFromElements, Link } from 'react-router-dom';
 import PatientConsultation from './components/PatientConsultation';
+import ConsultationDashboard from './components/ConsultationDashboard';
 import React, { useRef } from 'react';
 
 // Modal 컴포넌트 직접 정의
@@ -1839,6 +1840,13 @@ function PatientQuestionnaireTable() {
           >
             구환 데이터 추가
           </button>
+          <Link 
+            to="/dashboard"
+            className="p-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm flex items-center gap-1"
+          >
+            <span>대시보드</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 3v6"/><path d="M15 3v6"/><path d="M9 15v6"/><path d="M15 15v6"/><path d="M3 9h6"/><path d="M3 15h6"/><path d="M15 9h6"/><path d="M15 15h6"/></svg>
+          </Link>
           <ThemeToggle />
         </div>
       </div>
@@ -2398,6 +2406,7 @@ const router = createHashRouter(
     <>
       <Route path="/" element={<PatientQuestionnaireTable />} />
       <Route path="/consultation/:residentId" element={<PatientConsultation />} />
+      <Route path="/dashboard" element={<ConsultationDashboard />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </>
   )
