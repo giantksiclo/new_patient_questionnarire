@@ -102,6 +102,14 @@ const PatientConsultation = () => {
   const [messageIsSent, setMessageIsSent] = useState(false);
   const [sendingNextVisitMessage, setSendingNextVisitMessage] = useState(false);
   const [nextVisitMessageIsSent, setNextVisitMessageIsSent] = useState(false);
+  
+  // 메시지 수정을 위한 상태 변수 추가
+  const [isEditingCustomMessage, setIsEditingCustomMessage] = useState(false);
+  const [isEditingNextVisitMessage, setIsEditingNextVisitMessage] = useState(false);
+  const [editedCustomMessage, setEditedCustomMessage] = useState('');
+  const [editedNextVisitMessage, setEditedNextVisitMessage] = useState('');
+  const [savingCustomMessage, setSavingCustomMessage] = useState(false);
+  const [savingNextVisitMessage, setSavingNextVisitMessage] = useState(false);
 
   // 환자 정보 가져오기
   useEffect(() => {
@@ -467,6 +475,10 @@ const PatientConsultation = () => {
   // 메시지 보기 모달
   const viewMessage = async (consultationId: number) => {
     try {
+      // 수정 모드 초기화
+      setIsEditingCustomMessage(false);
+      setIsEditingNextVisitMessage(false);
+      
       if (!generatedMessages[consultationId]) {
         // 메시지 내용이 캐시되어 있지 않으면 조회
         const { data: generationData, error: generationError } = await supabase
@@ -496,8 +508,8 @@ const PatientConsultation = () => {
         }));
         
         // 메시지 전송 상태 설정
-        setMessageIsSent(storageData.message_send || false);
-        setNextVisitMessageIsSent(storageData.next_message_send || false);
+        setMessageIsSent(storageData.message_send === true || storageData.message_send === null);
+        setNextVisitMessageIsSent(storageData.next_message_send === true || storageData.next_message_send === null);
         
         setSelectedMessage(storageData);
       } else {
@@ -519,8 +531,9 @@ const PatientConsultation = () => {
             .single();
             
           if (!storageError && storageData) {
-            setMessageIsSent(storageData.message_send || false);
-            setNextVisitMessageIsSent(storageData.next_message_send || false);
+            // true나 null은 전송 완료 상태로 설정
+            setMessageIsSent(storageData.message_send === true || storageData.message_send === null);
+            setNextVisitMessageIsSent(storageData.next_message_send === true || storageData.next_message_send === null);
           }
         }
       }
@@ -555,21 +568,40 @@ const PatientConsultation = () => {
         throw new Error('메시지 생성 정보를 찾을 수 없습니다.');
       }
       
-      // 2. message_storage 테이블의 message_send 필드 업데이트
-      const { /* data, */ error } = await supabase
+      // 2. 전송 상태 확인 및 업데이트 준비
+      const { data: checkData } = await supabase
         .from('message_storage')
-        .update({ 
-          message_send: true,
-          next_message_send: false   // 다음 방문 메시지는 false로 설정
-        })
+        .select('message_send, next_message_send')
+        .eq('id', generationData.id)
+        .single();
+        
+      // 3. message_storage 테이블의 필드 업데이트
+      const updateData: { message_send: boolean, next_message_send: boolean | null } = {
+        message_send: true,
+        next_message_send: checkData?.next_message_send || false
+      };
+      
+      // 다른 메시지가 true인 경우 null로 변경
+      if (updateData.next_message_send === true) {
+        updateData.next_message_send = null;
+      }
+      
+      const { error } = await supabase
+        .from('message_storage')
+        .update(updateData)
         .eq('id', generationData.id)
         .select();
         
       if (error) throw error;
       
-      // 업데이트 성공
+      // 업데이트 성공 - 상태 변수 업데이트
       setMessageIsSent(true);
-      setNextVisitMessageIsSent(false);  // 다음 방문 메시지 상태도 업데이트
+      
+      // 다른 메시지 상태도 업데이트
+      if (checkData?.next_message_send === true) {
+        setNextVisitMessageIsSent(true); // null도 '전송 완료'로 표시되므로 true로 유지
+      }
+      
       alert('맞춤 메시지 전송 요청이 완료되었습니다!');
       
     } catch (error) {
@@ -602,23 +634,29 @@ const PatientConsultation = () => {
         throw new Error('메시지 생성 정보를 찾을 수 없습니다.');
       }
       
-      // 2. 테이블 구조 확인을 위해 먼저 데이터 조회
+      // 2. 전송 상태 확인 및 업데이트 준비
       const { data: checkData, /* checkError */ } = await supabase
         .from('message_storage')
-        .select('*')
+        .select('message_send, next_message_send')
         .eq('id', generationData.id)
         .single();
         
       console.log('기존 데이터:', checkData);
-      console.log('기존 next_message_send 값:', checkData?.next_message_send);
       
-      // 3. message_storage 테이블의 next_message_send 필드 업데이트
+      // 3. message_storage 테이블의 필드 업데이트
+      const updateData: { message_send: boolean | null, next_message_send: boolean } = {
+        message_send: checkData?.message_send || false,
+        next_message_send: true
+      };
+      
+      // 다른 메시지가 true인 경우 null로 변경
+      if (updateData.message_send === true) {
+        updateData.message_send = null;
+      }
+      
       const { data, error } = await supabase
         .from('message_storage')
-        .update({ 
-          message_send: false,     // 맞춤 메시지는 false로 설정
-          next_message_send: true
-        })
+        .update(updateData)
         .eq('id', generationData.id)
         .select();
       
@@ -630,17 +668,14 @@ const PatientConsultation = () => {
         throw error;
       }
       
-      if (!data) {
-        console.log('업데이트 결과가 없습니다.');
-      }
-      
-      if (data && data.length > 0) {
-        console.log('업데이트 후 next_message_send 값:', data[0].next_message_send);
-      }
-      
-      // 업데이트 성공
-      setMessageIsSent(false);  // 맞춤 메시지 상태도 업데이트
+      // 업데이트 성공 - 상태 변수 업데이트
       setNextVisitMessageIsSent(true);
+      
+      // 다른 메시지 상태도 업데이트
+      if (checkData?.message_send === true) {
+        setMessageIsSent(true); // null도 '전송 완료'로 표시되므로 true로 유지
+      }
+      
       alert('다음 방문 메시지 전송 요청이 완료되었습니다!');
       
     } catch (error) {
@@ -841,6 +876,124 @@ const PatientConsultation = () => {
           return newState;
         });
       }, 5000);
+    }
+  };
+
+  // 맞춤 메시지 수정 함수
+  const saveEditedCustomMessage = async () => {
+    if (!selectedConsultationId) return;
+    
+    try {
+      setSavingCustomMessage(true);
+      
+      // 1. message_generation 테이블에서 ID 가져오기
+      const { data: generationData, error: generationError } = await supabase
+        .from('message_generation')
+        .select('id')
+        .eq('consultation_id', selectedConsultationId)
+        .single();
+        
+      if (generationError) throw generationError;
+      
+      if (!generationData) {
+        throw new Error('메시지 생성 정보를 찾을 수 없습니다.');
+      }
+      
+      // 2. message_storage 테이블의 custom_message 필드 업데이트
+      const { error } = await supabase
+        .from('message_storage')
+        .update({ 
+          custom_message: editedCustomMessage
+        })
+        .eq('id', generationData.id)
+        .select();
+        
+      if (error) throw error;
+      
+      // 업데이트 성공
+      setSelectedMessage(prev => ({
+        ...prev!,
+        custom_message: editedCustomMessage
+      }));
+      
+      // 캐시된 메시지도 업데이트
+      if (selectedConsultationId) {
+        setGeneratedMessages(prev => ({
+          ...prev,
+          [selectedConsultationId]: {
+            ...prev[selectedConsultationId],
+            custom_message: editedCustomMessage
+          }
+        }));
+      }
+      
+      setIsEditingCustomMessage(false);
+      alert('맞춤 메시지가 수정되었습니다.');
+      
+    } catch (error) {
+      console.error('맞춤 메시지 수정 오류:', error);
+      alert('맞춤 메시지 수정 중 오류가 발생했습니다.');
+    } finally {
+      setSavingCustomMessage(false);
+    }
+  };
+  
+  // 다음 방문 메시지 수정 함수
+  const saveEditedNextVisitMessage = async () => {
+    if (!selectedConsultationId) return;
+    
+    try {
+      setSavingNextVisitMessage(true);
+      
+      // 1. message_generation 테이블에서 ID 가져오기
+      const { data: generationData, error: generationError } = await supabase
+        .from('message_generation')
+        .select('id')
+        .eq('consultation_id', selectedConsultationId)
+        .single();
+        
+      if (generationError) throw generationError;
+      
+      if (!generationData) {
+        throw new Error('메시지 생성 정보를 찾을 수 없습니다.');
+      }
+      
+      // 2. message_storage 테이블의 next_visit_message 필드 업데이트
+      const { error } = await supabase
+        .from('message_storage')
+        .update({ 
+          next_visit_message: editedNextVisitMessage
+        })
+        .eq('id', generationData.id)
+        .select();
+        
+      if (error) throw error;
+      
+      // 업데이트 성공
+      setSelectedMessage(prev => ({
+        ...prev!,
+        next_visit_message: editedNextVisitMessage
+      }));
+      
+      // 캐시된 메시지도 업데이트
+      if (selectedConsultationId) {
+        setGeneratedMessages(prev => ({
+          ...prev,
+          [selectedConsultationId]: {
+            ...prev[selectedConsultationId],
+            next_visit_message: editedNextVisitMessage
+          }
+        }));
+      }
+      
+      setIsEditingNextVisitMessage(false);
+      alert('다음 방문 메시지가 수정되었습니다.');
+      
+    } catch (error) {
+      console.error('다음 방문 메시지 수정 오류:', error);
+      alert('다음 방문 메시지 수정 중 오류가 발생했습니다.');
+    } finally {
+      setSavingNextVisitMessage(false);
     }
   };
 
@@ -1465,6 +1618,9 @@ const PatientConsultation = () => {
                   setMessageIsSent(false);
                   setSendingNextVisitMessage(false);
                   setNextVisitMessageIsSent(false);
+                  // 수정 모드 초기화
+                  setIsEditingCustomMessage(false);
+                  setIsEditingNextVisitMessage(false);
                 }}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -1475,57 +1631,153 @@ const PatientConsultation = () => {
             <div className="mb-6">
               <div className="flex justify-between items-center mb-2">
                 <h4 className="font-medium text-gray-900">맞춤 메시지:</h4>
-                <div>
-                  {messageIsSent ? (
-                    <span className="inline-block bg-green-500 text-white px-2 py-1 rounded text-sm">
-                      전송 완료
-                    </span>
+                <div className="flex gap-2">
+                  {isEditingCustomMessage ? (
+                    <>
+                      <button
+                        onClick={saveEditedCustomMessage}
+                        disabled={savingCustomMessage}
+                        className={`px-3 py-1 rounded text-white text-sm ${
+                          savingCustomMessage
+                            ? "bg-green-300 cursor-wait"
+                            : "bg-green-500 hover:bg-green-600"
+                        }`}
+                      >
+                        {savingCustomMessage ? "저장 중..." : "저장"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingCustomMessage(false);
+                          setEditedCustomMessage(selectedMessage.custom_message || '');
+                        }}
+                        className="px-3 py-1 rounded text-white text-sm bg-gray-500 hover:bg-gray-600"
+                      >
+                        취소
+                      </button>
+                    </>
                   ) : (
-                    <button
-                      onClick={sendMessage}
-                      disabled={sendingMessage}
-                      className={`px-3 py-1 rounded text-white text-sm ${
-                        sendingMessage
-                          ? "bg-blue-300 cursor-wait"
-                          : "bg-blue-500 hover:bg-blue-600"
-                      }`}
-                    >
-                      {sendingMessage ? "전송 중..." : "맞춤 메시지 전송"}
-                    </button>
+                    <>
+                      {/* 메시지 전송 상태가 false일 때만 수정 버튼 표시 */}
+                      {!messageIsSent && messageIsSent !== null && (
+                        <button
+                          onClick={() => {
+                            setIsEditingCustomMessage(true);
+                            setEditedCustomMessage(selectedMessage.custom_message || '');
+                          }}
+                          className="px-3 py-1 rounded text-white text-sm bg-yellow-500 hover:bg-yellow-600 mr-2"
+                        >
+                          수정
+                        </button>
+                      )}
+                      {messageIsSent || messageIsSent === null ? (
+                        <span className="inline-block bg-green-500 text-white px-2 py-1 rounded text-sm">
+                          전송 완료
+                        </span>
+                      ) : (
+                        <button
+                          onClick={sendMessage}
+                          disabled={sendingMessage}
+                          className={`px-3 py-1 rounded text-white text-sm ${
+                            sendingMessage
+                              ? "bg-blue-300 cursor-wait"
+                              : "bg-blue-500 hover:bg-blue-600"
+                          }`}
+                        >
+                          {sendingMessage ? "전송 중..." : "맞춤 메시지 전송"}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
-              <div className="bg-gray-50 p-3 rounded whitespace-pre-wrap text-gray-900">
-                {selectedMessage.custom_message || "맞춤 메시지가 생성되지 않았습니다."}
-              </div>
+              {isEditingCustomMessage ? (
+                <textarea
+                  value={editedCustomMessage}
+                  onChange={(e) => setEditedCustomMessage(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-gray-900 min-h-[200px]"
+                  placeholder="맞춤 메시지를 입력하세요"
+                />
+              ) : (
+                <div className="bg-gray-50 p-3 rounded whitespace-pre-wrap text-gray-900">
+                  {selectedMessage.custom_message || "맞춤 메시지가 생성되지 않았습니다."}
+                </div>
+              )}
             </div>
             
             <div className="mb-4">
               <div className="flex justify-between items-center mb-2">
                 <h4 className="font-medium text-gray-900">다음 방문 메시지:</h4>
-                <div>
-                  {nextVisitMessageIsSent ? (
-                    <span className="inline-block bg-green-500 text-white px-2 py-1 rounded text-sm">
-                      전송 완료
-                    </span>
+                <div className="flex gap-2">
+                  {isEditingNextVisitMessage ? (
+                    <>
+                      <button
+                        onClick={saveEditedNextVisitMessage}
+                        disabled={savingNextVisitMessage}
+                        className={`px-3 py-1 rounded text-white text-sm ${
+                          savingNextVisitMessage
+                            ? "bg-green-300 cursor-wait"
+                            : "bg-green-500 hover:bg-green-600"
+                        }`}
+                      >
+                        {savingNextVisitMessage ? "저장 중..." : "저장"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingNextVisitMessage(false);
+                          setEditedNextVisitMessage(selectedMessage.next_visit_message || '');
+                        }}
+                        className="px-3 py-1 rounded text-white text-sm bg-gray-500 hover:bg-gray-600"
+                      >
+                        취소
+                      </button>
+                    </>
                   ) : (
-                    <button
-                      onClick={sendNextVisitMessage}
-                      disabled={sendingNextVisitMessage}
-                      className={`px-3 py-1 rounded text-white text-sm ${
-                        sendingNextVisitMessage
-                          ? "bg-blue-300 cursor-wait"
-                          : "bg-blue-500 hover:bg-blue-600"
-                      }`}
-                    >
-                      {sendingNextVisitMessage ? "전송 중..." : "방문 메시지 전송"}
-                    </button>
+                    <>
+                      {/* 다음 방문 메시지 전송 상태가 false일 때만 수정 버튼 표시 */}
+                      {!nextVisitMessageIsSent && nextVisitMessageIsSent !== null && (
+                        <button
+                          onClick={() => {
+                            setIsEditingNextVisitMessage(true);
+                            setEditedNextVisitMessage(selectedMessage.next_visit_message || '');
+                          }}
+                          className="px-3 py-1 rounded text-white text-sm bg-yellow-500 hover:bg-yellow-600 mr-2"
+                        >
+                          수정
+                        </button>
+                      )}
+                      {nextVisitMessageIsSent || nextVisitMessageIsSent === null ? (
+                        <span className="inline-block bg-green-500 text-white px-2 py-1 rounded text-sm">
+                          전송 완료
+                        </span>
+                      ) : (
+                        <button
+                          onClick={sendNextVisitMessage}
+                          disabled={sendingNextVisitMessage}
+                          className={`px-3 py-1 rounded text-white text-sm ${
+                            sendingNextVisitMessage
+                              ? "bg-blue-300 cursor-wait"
+                              : "bg-blue-500 hover:bg-blue-600"
+                          }`}
+                        >
+                          {sendingNextVisitMessage ? "전송 중..." : "방문 메시지 전송"}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
-              <div className="bg-gray-50 p-3 rounded whitespace-pre-wrap text-gray-900">
-                {selectedMessage.next_visit_message || "다음 방문 메시지가 생성되지 않았습니다."}
-              </div>
+              {isEditingNextVisitMessage ? (
+                <textarea
+                  value={editedNextVisitMessage}
+                  onChange={(e) => setEditedNextVisitMessage(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded text-gray-900 min-h-[200px]"
+                  placeholder="다음 방문 메시지를 입력하세요"
+                />
+              ) : (
+                <div className="bg-gray-50 p-3 rounded whitespace-pre-wrap text-gray-900">
+                  {selectedMessage.next_visit_message || "다음 방문 메시지가 생성되지 않았습니다."}
+                </div>
+              )}
             </div>
           </div>
         </div>

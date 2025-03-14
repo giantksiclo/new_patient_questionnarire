@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { supabase, getNoCacheQuery } from '../supabaseClient';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,6 +15,8 @@ import {
 } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
+import moment from 'moment-timezone';
+import * as dateUtils from '../utils/dateUtils';
 
 // Chart.js 컴포넌트 등록
 ChartJS.register(
@@ -68,6 +70,8 @@ interface AmountStats {
 interface DateAmountStats {
   date: string;
   amounts: AmountStats;
+  target: number;
+  achievementRate: number;
 }
 
 // 상담자별 금액 통계 타입
@@ -92,10 +96,34 @@ const ConsultationDashboard: React.FC = () => {
   const [dateAmountStats, setDateAmountStats] = useState<DateAmountStats[]>([]);
   const [consultantAmountStats, setConsultantAmountStats] = useState<ConsultantAmountStats[]>([]);
   const [periodType, setPeriodType] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
+  // 목표 금액 상수 추가
+  const DAILY_TARGET = 20000000; // 일별 목표: 2,000만원 (수정됨)
+  const WEEKLY_TARGET = 100000000; // 주별 목표: 1억원 (수정됨)
+  const MONTHLY_TARGET = 400000000; // 월별 목표: 4억원 (수정됨)
+  // 상담자별 목표 금액 추가
+  const CONSULTANT_DAILY_TARGET = 5000000; // 일별 목표: 500만원
+  const CONSULTANT_WEEKLY_TARGET = 25000000; // 주별 목표: 2,500만원
+  const CONSULTANT_MONTHLY_TARGET = 100000000; // 월별 목표: 1억원
+  const [filteredDataCount, setFilteredDataCount] = useState<number>(0);
+  const [totalDataCount, setTotalDataCount] = useState<number>(0);
 
   // 상담 기록 가져오기
   useEffect(() => {
-    fetchConsultations();
+    console.log('날짜 범위 변경됨:', dateRange, startDate, endDate);
+    if (dateRange !== 'custom' || (startDate && endDate)) {
+      // 초기화
+      setConsultations([]);
+      setFilteredDataCount(0);
+      setTotalDataCount(0);
+      setLoading(true);
+      
+      console.log('🔍 실제 사용되는 필터 값 - 시작일:', startDate, '종료일:', endDate);
+      
+      // 약간의 지연 후 실행 (상태 업데이트 확인을 위해)
+      setTimeout(() => {
+        fetchConsultations(startDate, endDate);
+      }, 100);
+    }
   }, [dateRange, startDate, endDate]);
 
   // 상담자별 통계 계산
@@ -122,40 +150,92 @@ const ConsultationDashboard: React.FC = () => {
     if (consultations.length > 0) {
       calculateAmountStatsByConsultant();
     }
-  }, [consultations]);
+  }, [consultations, periodType]);
 
   // 상담 기록 가져오기
-  const fetchConsultations = async () => {
+  const fetchConsultations = async (currentStartDate: string, currentEndDate: string) => {
     try {
       setLoading(true);
+      
+      console.log('----------- 데이터 조회 시작 -----------');
+      console.log(`조회 기간: ${currentStartDate || '전체'} ~ ${currentEndDate || '전체'}`);
+      
+      // 캐시 무시 쿼리 매개변수
+      const nocache = getNoCacheQuery();
+      console.log('캐시 방지 키:', nocache);
       
       // 상담 정보 먼저 가져오기
       let query = supabase
         .from('patient_consultations')
-        .select('*')
+        .select('*', { count: 'exact' }) // 전체 카운트 요청
         .order('consultation_date', { ascending: false });
       
-      // 날짜 필터 적용
-      if (startDate) {
-        query = query.gte('consultation_date', startDate);
+      // 날짜 필터 적용 - date 타입에 맞게 단순화
+      if (currentStartDate) {
+        // date 타입은 YYYY-MM-DD 형식이므로 그대로 사용
+        query = query.gte('consultation_date', currentStartDate);
+        console.log('date 필터 적용 - 시작일:', currentStartDate);
       }
       
-      if (endDate) {
-        query = query.lte('consultation_date', endDate);
+      if (currentEndDate) {
+        // date 타입에서 종료일을 포함하려면 다음 날짜보다 작은 조건 사용
+        const nextDay = moment(currentEndDate).add(1, 'days').format('YYYY-MM-DD');
+        query = query.lt('consultation_date', nextDay);
+        console.log('date 필터 적용 - 종료일(다음날):', nextDay);
       }
       
-      const { data: consultationsData, error: consultationsError } = await query;
+      // 실제 쿼리 로그
+      console.log('실행되는 쿼리 조건:', {
+        table: 'patient_consultations',
+        startDate: currentStartDate || 'none',
+        endDate: currentEndDate ? moment(currentEndDate).add(1, 'days').format('YYYY-MM-DD') : 'none',
+        nocache: nocache // 캐시 방지 쿼리 파라미터 추가
+      });
+      
+      // 콘솔에 전체 SQL 유사 쿼리 표시 (디버깅용)
+      console.log(`SQL 유사 쿼리: SELECT * FROM patient_consultations WHERE ${
+        currentStartDate ? `consultation_date >= '${currentStartDate}'` : '1=1'
+      } AND ${
+        currentEndDate ? `consultation_date < '${moment(currentEndDate).add(1, 'days').format('YYYY-MM-DD')}'` : '1=1'
+      } ORDER BY consultation_date DESC`);
+      
+      // 쿼리 실행 - 캐시 옵션 적용
+      const { data: consultationsData, error: consultationsError, count: totalCount } = await query;
+      
+      console.log('쿼리 결과 데이터 수:', consultationsData?.length || 0, '전체 카운트:', totalCount);
       
       if (consultationsError) {
+        console.error('조회 오류 발생:', consultationsError);
         throw consultationsError;
       }
       
       if (consultationsData && consultationsData.length > 0) {
-        // 모든 환자 ID 추출
-        const patientIds = [...new Set(consultationsData.map(c => c.patient_id))];
-        console.log('환자 ID 목록:', patientIds);
+        console.log('첫 번째 데이터 날짜 형식 확인:', 
+          consultationsData[0].consultation_date, 
+          typeof consultationsData[0].consultation_date
+        );
         
-        // 환자 정보 별도로 가져오기
+        // 원본 데이터 수 기록
+        setTotalDataCount(totalCount || consultationsData.length);
+        
+        // 서버 측 필터링이 이미 적용되었으므로 클라이언트 필터링은 생략
+        // 하지만 간단한 검증은 수행 (문제 진단용)
+        let filteredConsultations = consultationsData;
+        setFilteredDataCount(consultationsData.length);
+        
+        // 날짜 범위 샘플 데이터 확인 (최대 5개)
+        if (consultationsData.length > 0) {
+          console.log('조회된 날짜 샘플 (최대 5개):');
+          consultationsData.slice(0, 5).forEach((consultation, index) => {
+            console.log(`${index+1}: ${consultation.consultation_date}`);
+          });
+        }
+        
+        // 모든 환자 ID 추출
+        const patientIds = [...new Set(filteredConsultations.map(c => c.patient_id))];
+        
+        // 환자 정보 별도로 가져오기 (캐시 방지 적용)
+        console.log('환자 정보 조회 시작');
         const { data: patientsData, error: patientsError } = await supabase
           .from('patient_questionnaire')
           .select('resident_id, name, phone')
@@ -164,9 +244,9 @@ const ConsultationDashboard: React.FC = () => {
         if (patientsError) {
           console.error('환자 정보 불러오기 실패:', patientsError);
           // 환자 정보를 가져오지 못해도 상담 정보는 표시
-          setConsultations(consultationsData);
+          setConsultations(filteredConsultations);
         } else {
-          console.log('가져온 환자 정보:', patientsData);
+          console.log('가져온 환자 정보:', patientsData?.length, '건');
           
           // 환자 정보와 상담 정보 결합
           const patientsMap = new Map();
@@ -174,7 +254,7 @@ const ConsultationDashboard: React.FC = () => {
             patientsMap.set(patient.resident_id, patient);
           });
           
-          const processedData = consultationsData.map(consultation => {
+          const finalData = filteredConsultations.map(consultation => {
             const patientInfo = patientsMap.get(consultation.patient_id);
             return {
               ...consultation,
@@ -183,10 +263,12 @@ const ConsultationDashboard: React.FC = () => {
             };
           });
           
-          setConsultations(processedData);
+          setConsultations(finalData);
         }
       } else {
         setConsultations([]);
+        setFilteredDataCount(0);
+        setTotalDataCount(0);
       }
     } catch (error) {
       console.error('상담 기록 불러오기 실패:', error);
@@ -245,8 +327,9 @@ const ConsultationDashboard: React.FC = () => {
 
   // 날짜 범위 설정
   const setDateRangeValues = (range: DateRange) => {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    // 한국 시간 기준으로 설정
+    const todayStr = dateUtils.getKoreanToday();
+    console.log('현재 한국 날짜:', todayStr);
     
     switch (range) {
       case 'all':
@@ -260,45 +343,44 @@ const ConsultationDashboard: React.FC = () => {
         break;
         
       case 'yesterday': {
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        const now = moment().tz('Asia/Seoul');
+        const yesterday = now.clone().subtract(1, 'days');
+        const yesterdayStr = yesterday.format('YYYY-MM-DD');
         setStartDate(yesterdayStr);
         setEndDate(yesterdayStr);
         break;
       }
         
       case 'thisWeek': {
-        const firstDayOfWeek = new Date(today);
-        const day = today.getDay() || 7; // 일요일이면 7로 변환
-        firstDayOfWeek.setDate(today.getDate() - (day - 1)); // 이번 주 월요일
-        setStartDate(firstDayOfWeek.toISOString().split('T')[0]);
+        setStartDate(dateUtils.getFirstDayOfWeek());
         setEndDate(todayStr);
         break;
       }
         
       case 'lastWeek': {
-        const lastWeekEnd = new Date(today);
-        lastWeekEnd.setDate(today.getDate() - today.getDay() - 1); // 지난 주 일요일
-        const lastWeekStart = new Date(lastWeekEnd);
-        lastWeekStart.setDate(lastWeekEnd.getDate() - 6); // 지난 주 월요일
-        setStartDate(lastWeekStart.toISOString().split('T')[0]);
-        setEndDate(lastWeekEnd.toISOString().split('T')[0]);
+        // 지난 주 월요일과 일요일
+        const now = moment().tz('Asia/Seoul');
+        const dayOfWeek = now.day() || 7;
+        const lastWeekSunday = now.clone().subtract(dayOfWeek, 'days');
+        const lastWeekMonday = lastWeekSunday.clone().subtract(6, 'days');
+        setStartDate(lastWeekMonday.format('YYYY-MM-DD'));
+        setEndDate(lastWeekSunday.format('YYYY-MM-DD'));
         break;
       }
         
       case 'thisMonth': {
-        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        setStartDate(firstDayOfMonth.toISOString().split('T')[0]);
+        setStartDate(dateUtils.getFirstDayOfMonth());
         setEndDate(todayStr);
         break;
       }
         
       case 'lastMonth': {
-        const firstDayOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-        setStartDate(firstDayOfLastMonth.toISOString().split('T')[0]);
-        setEndDate(lastDayOfLastMonth.toISOString().split('T')[0]);
+        // 지난 달 1일부터 말일까지
+        const now = moment().tz('Asia/Seoul');
+        const firstDayOfLastMonth = now.clone().subtract(1, 'month').date(1);
+        const lastDayOfLastMonth = now.clone().date(1).subtract(1, 'day');
+        setStartDate(firstDayOfLastMonth.format('YYYY-MM-DD'));
+        setEndDate(lastDayOfLastMonth.format('YYYY-MM-DD'));
         break;
       }
         
@@ -310,8 +392,7 @@ const ConsultationDashboard: React.FC = () => {
   // 날짜 포맷 변환
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '';
-    const date = new Date(dateStr);
-    return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+    return dateUtils.formatToKoreanDateText(dateStr);
   };
 
   // 퍼센트 포맷 변환
@@ -327,6 +408,7 @@ const ConsultationDashboard: React.FC = () => {
   // 날짜 범위 변경 핸들러
   const handleDateRangeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setDateRange(e.target.value as DateRange);
+    // 자동 새로고침 코드 제거
   };
 
   // 커스텀 날짜 변경 핸들러
@@ -337,6 +419,7 @@ const ConsultationDashboard: React.FC = () => {
     } else if (name === 'endDate') {
       setEndDate(value);
     }
+    // 자동 새로고침 코드 제거
   };
 
   // 날짜 범위 표시
@@ -351,94 +434,201 @@ const ConsultationDashboard: React.FC = () => {
     return '';
   };
 
+  // 클라이언트 측에서의 날짜 필터링 적용 함수 제거
+  // 이 함수는 더 이상 사용되지 않으므로 제거합니다
+  
+  // 필터 초기화 핸들러 - 문제 발생 시 강제 새로고침
+  const handleResetFilter = () => {
+    // 상태 초기화
+    setConsultations([]);
+    setFilteredDataCount(0);
+    setTotalDataCount(0);
+    
+    // 캐시 없이 현재 설정된 필터로 데이터 다시 가져오기
+    setTimeout(() => {
+      fetchConsultations(startDate, endDate);
+    }, 100);
+  };
+  
   // 날짜별 금액 통계 계산 함수
   const calculateAmountStatsByDate = () => {
-    // 날짜 그룹화 기준 설정
-    const getGroupKey = (date: Date) => {
-      if (periodType === 'daily') {
-        return date.toISOString().split('T')[0]; // YYYY-MM-DD
-      } else if (periodType === 'weekly') {
-        // 주의 시작일(월요일)을 키로 사용
-        const dayOfWeek = date.getDay() || 7; // 일요일(0)을 7로 변환
-        const monday = new Date(date);
-        monday.setDate(date.getDate() - (dayOfWeek - 1));
-        return monday.toISOString().split('T')[0];
-      } else {
-        // 월 단위 그룹화
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      }
-    };
-
-    // 날짜 표시 포맷 설정
-    const formatGroupKey = (key: string) => {
-      if (periodType === 'daily') {
-        const date = new Date(key);
-        return `${date.getMonth() + 1}/${date.getDate()}`;
-      } else if (periodType === 'weekly') {
-        const date = new Date(key);
-        return `${date.getMonth() + 1}/${date.getDate()} 주`;
-      } else {
-        const [year, month] = key.split('-');
-        return `${year}년 ${month}월`;
-      }
-    };
-
-    // 날짜별로 데이터 그룹화
-    const dateGroups: Record<string, ConsultationRecord[]> = {};
-    
-    consultations.forEach(consultation => {
-      if (!consultation.consultation_date) return;
+    // 일별/주별/월별에 따른 데이터 준비
+    if (periodType === 'daily') {
+      // 일별 데이터 (1일~31일)
+      const dailyStats: DateAmountStats[] = [];
       
-      const date = new Date(consultation.consultation_date);
-      const groupKey = getGroupKey(date);
+      // 한국 시간 기준 현재 달의 일수 구하기
+      const now = moment().tz('Asia/Seoul');
+      const currentYear = now.year();
+      const currentMonth = now.month();
+      const daysInMonth = moment().tz('Asia/Seoul').daysInMonth();
       
-      if (!dateGroups[groupKey]) {
-        dateGroups[groupKey] = [];
-      }
-      
-      dateGroups[groupKey].push(consultation);
-    });
-
-    // 날짜별 금액 통계 계산
-    const stats: DateAmountStats[] = Object.keys(dateGroups)
-      .sort()
-      .map(key => {
-        const records = dateGroups[key];
-        const displayDate = formatGroupKey(key);
+      // 1일부터 현재 달의 마지막 일까지 데이터 생성
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateObj = moment().tz('Asia/Seoul').year(currentYear).month(currentMonth).date(day);
+        const dateStr = dateObj.format('YYYY-MM-DD');
         
-        const diagnosisAmount = records.reduce((sum, record) => 
-          sum + (typeof record.diagnosis_amount === 'number' ? record.diagnosis_amount : 0), 0);
+        // 해당 날짜의 상담 기록 필터링
+        const dayRecords = consultations.filter(c => {
+          if (!c.consultation_date) return false;
+          return c.consultation_date.startsWith(dateStr);
+        });
         
-        const consultationAmount = records.reduce((sum, record) => 
+        // 금액 합산
+        const consultationAmount = dayRecords.reduce((sum, record) => 
           sum + (typeof record.consultation_amount === 'number' ? record.consultation_amount : 0), 0);
         
-        const paymentAmount = records.reduce((sum, record) => 
+        const paymentAmount = dayRecords.reduce((sum, record) => 
           sum + (typeof record.payment_amount === 'number' ? record.payment_amount : 0), 0);
         
-        const remainingAmount = consultationAmount - paymentAmount;
-        
-        return {
-          date: displayDate,
+        dailyStats.push({
+          date: `${day}일`,
           amounts: {
-            diagnosis: diagnosisAmount,
+            diagnosis: 0,
             consultation: consultationAmount,
             payment: paymentAmount,
-            remaining: remainingAmount
-          }
-        };
-      });
-
-    // 최근 6개 기간만 표시 (역순으로 정렬된 배열에서 앞의 6개 추출하고 다시 역순으로)
-    const recentStats = [...stats].reverse().slice(0, 6).reverse();
-    setDateAmountStats(recentStats);
+            remaining: consultationAmount - paymentAmount
+          },
+          target: DAILY_TARGET,
+          achievementRate: paymentAmount / DAILY_TARGET * 100
+        });
+      }
+      
+      setDateAmountStats(dailyStats);
+    } 
+    else if (periodType === 'weekly') {
+      // 주별 데이터 (1주~4주)
+      const weeklyStats: DateAmountStats[] = [];
+      
+      // 각 주차별 데이터 생성
+      for (let week = 1; week <= 4; week++) {
+        // 해당 주차에 속하는 상담 기록 필터링 (간단한 구현을 위해 임의로 날짜 범위 지정)
+        // 1주: 1-7일, 2주: 8-14일, 3주: 15-21일, 4주: 22-31일
+        const startDay = (week - 1) * 7 + 1;
+        const endDay = week === 4 ? 31 : week * 7;
+        
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        
+        // 해당 주차의 상담 기록 필터링
+        const weekRecords = consultations.filter(c => {
+          if (!c.consultation_date) return false;
+          const day = parseInt(c.consultation_date.split('-')[2], 10);
+          return day >= startDay && day <= endDay && 
+                 c.consultation_date.startsWith(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`);
+        });
+        
+        // 금액 합산
+        const consultationAmount = weekRecords.reduce((sum, record) => 
+          sum + (typeof record.consultation_amount === 'number' ? record.consultation_amount : 0), 0);
+        
+        const paymentAmount = weekRecords.reduce((sum, record) => 
+          sum + (typeof record.payment_amount === 'number' ? record.payment_amount : 0), 0);
+        
+        weeklyStats.push({
+          date: `${week}주차`,
+          amounts: {
+            diagnosis: 0,
+            consultation: consultationAmount,
+            payment: paymentAmount,
+            remaining: consultationAmount - paymentAmount
+          },
+          target: WEEKLY_TARGET,
+          achievementRate: paymentAmount / WEEKLY_TARGET * 100
+        });
+      }
+      
+      setDateAmountStats(weeklyStats);
+    } 
+    else {
+      // 월별 데이터 (최근 12개월)
+      const monthlyStats: DateAmountStats[] = [];
+      
+      // 현재 달로부터 11개월 전까지의 데이터 생성
+      const now = new Date();
+      
+      for (let i = 11; i >= 0; i--) {
+        const targetDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const targetYear = targetDate.getFullYear();
+        const targetMonth = targetDate.getMonth();
+        
+        // 해당 월의 상담 기록 필터링
+        const monthRecords = consultations.filter(c => {
+          if (!c.consultation_date) return false;
+          const [year, month] = c.consultation_date.split('-').map(n => parseInt(n, 10));
+          return year === targetYear && month === targetMonth + 1; // DB는 1-12월, JS는 0-11월
+        });
+        
+        // 금액 합산
+        const consultationAmount = monthRecords.reduce((sum, record) => 
+          sum + (typeof record.consultation_amount === 'number' ? record.consultation_amount : 0), 0);
+        
+        const paymentAmount = monthRecords.reduce((sum, record) => 
+          sum + (typeof record.payment_amount === 'number' ? record.payment_amount : 0), 0);
+        
+        monthlyStats.push({
+          date: `${targetYear}.${targetMonth + 1}`,
+          amounts: {
+            diagnosis: 0,
+            consultation: consultationAmount,
+            payment: paymentAmount,
+            remaining: consultationAmount - paymentAmount
+          },
+          target: MONTHLY_TARGET,
+          achievementRate: paymentAmount / MONTHLY_TARGET * 100
+        });
+      }
+      
+      setDateAmountStats(monthlyStats);
+    }
   };
 
   // 상담자별 금액 통계 계산 함수
   const calculateAmountStatsByConsultant = () => {
+    // 기간 유형에 따라 상담 기록 필터링
+    let filteredConsultations = [...consultations];
+
+    if (periodType === 'daily') {
+      // 일별 데이터 - 한국 시간 기준 현재 날짜의 상담만 필터링
+      const today = moment().tz('Asia/Seoul').format('YYYY-MM-DD');
+      
+      filteredConsultations = consultations.filter(c => {
+        if (!c.consultation_date) return false;
+        return c.consultation_date.startsWith(today);
+      });
+    } 
+    else if (periodType === 'weekly') {
+      // 주별 데이터 - 한국 시간 기준 이번 주의 상담만 필터링
+      const now = moment().tz('Asia/Seoul');
+      const day = now.day() || 7; // 일요일이면 7로 변환
+      const firstDayOfWeek = now.clone().subtract(day - 1, 'days'); // 이번 주 월요일
+      
+      const startDate = firstDayOfWeek.format('YYYY-MM-DD');
+      const todayStr = now.format('YYYY-MM-DD');
+      
+      filteredConsultations = consultations.filter(c => {
+        if (!c.consultation_date) return false;
+        return c.consultation_date >= startDate && c.consultation_date <= todayStr;
+      });
+    }
+    else {
+      // 월별 데이터 - 한국 시간 기준 이번 달의 상담만 필터링
+      const now = moment().tz('Asia/Seoul');
+      const currentYear = now.year();
+      const currentMonth = now.month() + 1; // moment는 0-11 월 사용
+      
+      filteredConsultations = consultations.filter(c => {
+        if (!c.consultation_date) return false;
+        const [year, month] = c.consultation_date.split('-').map(n => parseInt(n, 10));
+        return year === currentYear && month === currentMonth;
+      });
+    }
+
     // 상담자별로 데이터 그룹화
     const consultantGroups: Record<string, ConsultationRecord[]> = {};
     
-    consultations.forEach(consultation => {
+    filteredConsultations.forEach(consultation => {
       if (!consultation.consultant) return;
       
       if (!consultantGroups[consultation.consultant]) {
@@ -477,7 +667,7 @@ const ConsultationDashboard: React.FC = () => {
       });
 
     // 금액 기준 내림차순 정렬
-    stats.sort((a, b) => b.amounts.consultation - a.amounts.consultation);
+    stats.sort((a, b) => b.amounts.payment - a.amounts.payment);
     
     setConsultantAmountStats(stats);
   };
@@ -588,9 +778,26 @@ const ConsultationDashboard: React.FC = () => {
           )}
           
           <div className="md:col-span-3">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-              {getDateRangeDisplay()} 데이터 기준
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                {getDateRangeDisplay()} 데이터 기준
+                {filteredDataCount > 0 && (
+                  <span className="ml-2 text-indigo-600 dark:text-indigo-400">
+                    (필터링됨: {filteredDataCount}/{totalDataCount}건)
+                  </span>
+                )}
+              </p>
+              <button
+                onClick={handleResetFilter}
+                className="px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 dark:bg-indigo-900 dark:text-indigo-200 dark:hover:bg-indigo-800 transition-colors ml-2"
+                title="필터 재적용 (캐시 초기화)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                </svg>
+              </button>
+              {/* 개발용 테스트 버튼 제거 */}
+            </div>
           </div>
         </div>
       </div>
@@ -888,64 +1095,64 @@ const ConsultationDashboard: React.FC = () => {
       <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">기간별 금액 통계</h2>
-          <select
-            value={periodType}
-            onChange={handlePeriodTypeChange}
-            className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-          >
-            <option value="daily">일별</option>
-            <option value="weekly">주별</option>
-            <option value="monthly">월별</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">
+              {periodType === 'daily' ? '일별 목표: 2,000만원' : 
+               periodType === 'weekly' ? '주별 목표: 1억원' : 
+               '월별 목표: 4억원'}
+            </span>
+            <select
+              value={periodType}
+              onChange={handlePeriodTypeChange}
+              className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+            >
+              <option value="daily">일별</option>
+              <option value="weekly">주별</option>
+              <option value="monthly">월별</option>
+            </select>
+          </div>
         </div>
         
         {dateAmountStats.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="h-80">
+          <div className="grid grid-cols-10 gap-6">
+            <div className="col-span-6 h-80">
+              <h3 className="text-lg font-medium mb-3 text-center">
+                {periodType === 'daily' ? '일별 수납/상담금액' : 
+                 periodType === 'weekly' ? '주별 수납/상담금액' : 
+                 '월별 수납/상담금액'}
+              </h3>
               <Bar 
                 data={{
                   labels: dateAmountStats.map(stat => stat.date),
                   datasets: [
                     {
-                      label: '진단금액',
-                      data: dateAmountStats.map(stat => stat.amounts.diagnosis),
-                      backgroundColor: 'rgba(53, 162, 235, 0.5)',
-                      borderColor: 'rgba(53, 162, 235, 0.8)',
-                      borderWidth: 1,
-                      stack: 'Stack 0',
+                      type: 'line' as const,
+                      label: '목표 금액',
+                      data: dateAmountStats.map(() => 
+                        periodType === 'daily' ? DAILY_TARGET : 
+                        periodType === 'weekly' ? WEEKLY_TARGET : 
+                        MONTHLY_TARGET
+                      ),
+                      borderColor: 'rgba(255, 0, 0, 1)',
+                      backgroundColor: 'transparent',
+                      borderWidth: 3,
+                      borderDash: [8, 4],
+                      fill: false,
+                      pointRadius: 0,
+                      pointHoverRadius: 0,
+                      order: 0,
                       datalabels: {
-                        align: 'top',
-                        anchor: 'end',
-                        color: 'white',
-                        font: {
-                          weight: 'bold',
-                          size: 10
-                        },
-                        formatter: (value: number) => value > 0 ? value.toLocaleString() : ''
+                        display: false
                       }
                     },
                     {
                       label: '상담금액',
                       data: dateAmountStats.map(stat => stat.amounts.consultation),
-                      backgroundColor: 'rgba(255, 159, 64, 0.7)',
-                      borderColor: 'rgba(255, 159, 64, 1)',
+                      backgroundColor: 'rgba(255, 205, 86, 0.7)',
+                      borderColor: 'rgba(255, 205, 86, 1)',
                       borderWidth: 1,
-                      stack: 'Stack 0',
                       datalabels: {
-                        align: 'center',
-                        anchor: 'center',
-                        color: 'white',
-                        font: {
-                          weight: 'bold',
-                          size: 10
-                        },
-                        formatter: (value: number, _context: any) => {
-                          const dataIndex = _context.dataIndex;
-                          const diagnosisAmount = dateAmountStats[dataIndex].amounts.diagnosis;
-                          if (diagnosisAmount <= 0 || value <= 0) return '';
-                          const percentage = Math.round((value / diagnosisAmount) * 100);
-                          return `${value.toLocaleString()}\n(${percentage}%)`;
-                        }
+                        display: false
                       }
                     },
                     {
@@ -954,33 +1161,8 @@ const ConsultationDashboard: React.FC = () => {
                       backgroundColor: 'rgba(75, 192, 192, 0.7)',
                       borderColor: 'rgba(75, 192, 192, 1)',
                       borderWidth: 1,
-                      stack: 'Stack 1',
                       datalabels: {
-                        align: 'center',
-                        anchor: 'center',
-                        color: 'white',
-                        font: {
-                          weight: 'bold',
-                          size: 10
-                        },
-                        formatter: (value: number) => value > 0 ? value.toLocaleString() : ''
-                      }
-                    },
-                    {
-                      label: '남은금액',
-                      data: dateAmountStats.map(stat => stat.amounts.remaining),
-                      backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                      borderColor: 'rgba(255, 99, 132, 1)',
-                      borderWidth: 1,
-                      stack: 'Stack 1',
-                      datalabels: {
-                        align: 'center',
-                        anchor: 'center',
-                        color: 'white',
-                        font: {
-                          weight: 'bold'
-                        },
-                        formatter: (value: number) => value !== 0 ? value.toLocaleString() : ''
+                        display: false
                       }
                     }
                   ]
@@ -990,33 +1172,29 @@ const ConsultationDashboard: React.FC = () => {
                   maintainAspectRatio: false,
                   scales: {
                     x: {
-                      stacked: true
+                      grid: {
+                        display: false
+                      }
                     },
                     y: {
-                      stacked: false,
                       beginAtZero: true,
+                      stacked: false,
                       ticks: {
                         // @ts-ignore
                         callback: function(value) {
                           return value.toLocaleString() + '원';
                         }
-                      }
+                      },
+                      // 목표 금액과 상담금액 중 큰 값의 1.2배를 최대값으로 설정
+                      max: Math.max(
+                        periodType === 'daily' ? DAILY_TARGET : 
+                        periodType === 'weekly' ? WEEKLY_TARGET : 
+                        MONTHLY_TARGET,
+                        ...dateAmountStats.map(stat => stat.amounts.consultation)
+                      ) * 1.2
                     }
                   },
                   plugins: {
-                    datalabels: {
-                      font: {
-                        size: 10,
-                        weight: 'bold'
-                      },
-                      offset: 0,
-                      padding: 2,
-                      color: 'white',
-                      formatter: function(value: number, _context: any) {
-                        // 개별 데이터셋의 포맷터가 우선적으로 적용됨
-                        return value !== 0 ? value.toLocaleString() : '';
-                      }
-                    },
                     tooltip: {
                       callbacks: {
                         // @ts-ignore
@@ -1025,41 +1203,21 @@ const ConsultationDashboard: React.FC = () => {
                           const value = context.raw as number;
                           const formattedValue = value.toLocaleString() + '원';
                           
-                          if (label === '수납금액' || label === '남은금액') {
-                            const dataIndex = context.dataIndex;
-                            const stat = dateAmountStats[dataIndex];
-                            const consultationAmount = stat.amounts.consultation;
-                            const percentage = Math.round((value / consultationAmount) * 100);
-                            return `${label}: ${formattedValue} (상담금액의 ${percentage}%)`;
-                          } else if (label === '진단금액') {
+                          if (label === '수납금액') {
+                            const targetAmount = periodType === 'daily' ? DAILY_TARGET : 
+                                               periodType === 'weekly' ? WEEKLY_TARGET : 
+                                               MONTHLY_TARGET;
+                            const percentage = Math.round((value / targetAmount) * 100);
+                            return `${label}: ${formattedValue} (목표의 ${percentage}%)`;
+                          } else if (label === '목표 금액') {
                             return `${label}: ${formattedValue}`;
                           } else if (label === '상담금액') {
-                            const dataIndex = context.dataIndex;
-                            const stat = dateAmountStats[dataIndex];
-                            const diagnosisAmount = stat.amounts.diagnosis;
-                            const percentage = diagnosisAmount > 0 
-                              ? Math.round((value / diagnosisAmount) * 100) 
-                              : 0;
-                            return `${label}: ${formattedValue} (진단금액의 ${percentage}%)`;
+                            const consultationAmount = dateAmountStats[context.dataIndex].amounts.consultation;
+                            const paymentAmount = dateAmountStats[context.dataIndex].amounts.payment;
+                            const percentage = consultationAmount > 0 ? Math.round((paymentAmount / consultationAmount) * 100) : 0;
+                            return `${label}: ${formattedValue} (수납율: ${percentage}%)`;
                           }
                           return `${label}: ${formattedValue}`;
-                        },
-                        // @ts-ignore
-                        afterLabel: function(context) {
-                          const label = context.dataset.label || '';
-                          const dataIndex = context.dataIndex;
-                          const stat = dateAmountStats[dataIndex];
-                          
-                          if (label === '진단금액') {
-                            const consultationAmount = stat.amounts.consultation;
-                            const percentage = stat.amounts.diagnosis > 0 
-                              ? Math.round((consultationAmount / stat.amounts.diagnosis) * 100) 
-                              : 0;
-                            return `상담금액: ${consultationAmount.toLocaleString()}원 (${percentage}%)`;
-                          } else if (label === '수납금액') {
-                            return `상담금액 합계: ${stat.amounts.consultation.toLocaleString()}원`;
-                          }
-                          return '';
                         }
                       }
                     },
@@ -1073,9 +1231,14 @@ const ConsultationDashboard: React.FC = () => {
                         boxWidth: 12
                       }
                     },
+                    datalabels: {
+                      display: false
+                    },
                     title: {
                       display: true,
-                      text: '* 수납금액 + 남은금액 = 상담금액',
+                      text: periodType === 'daily' ? '* 일별 목표: 2,000만원' : 
+                            periodType === 'weekly' ? '* 주별 목표: 1억원' : 
+                            '* 월별 목표: 4억원',
                       position: 'bottom',
                       padding: {
                         top: 10,
@@ -1086,13 +1249,19 @@ const ConsultationDashboard: React.FC = () => {
                         style: 'italic'
                       }
                     }
-                  }
+                  },
+                  barPercentage: 0.7,
+                  categoryPercentage: 0.8
                 }}
               />
             </div>
             
-            <div className="h-80">
-              <h3 className="text-lg font-medium mb-3 text-center">상담자별 목표 달성률</h3>
+            <div className="col-span-4 h-80">
+              <h3 className="text-lg font-medium mb-3 text-center">
+                {periodType === 'daily' ? '일별 상담자별 목표 달성률' : 
+                 periodType === 'weekly' ? '주별 상담자별 목표 달성률' : 
+                 '월별 상담자별 목표 달성률'}
+              </h3>
               <Bar 
                 data={{
                   labels: consultantAmountStats.map(stat => stat.consultant),
@@ -1103,7 +1272,6 @@ const ConsultationDashboard: React.FC = () => {
                       backgroundColor: 'rgba(75, 192, 192, 0.7)',
                       borderColor: 'rgba(75, 192, 192, 1)',
                       borderWidth: 1,
-                      stack: 'Stack 0',
                       datalabels: {
                         align: 'end',
                         anchor: 'end',
@@ -1113,18 +1281,25 @@ const ConsultationDashboard: React.FC = () => {
                           size: 10
                         },
                         formatter: (value: number) => {
-                          const percentage = Math.round((value / 100000000) * 100);
+                          const target = periodType === 'daily' ? CONSULTANT_DAILY_TARGET : 
+                                      periodType === 'weekly' ? CONSULTANT_WEEKLY_TARGET : 
+                                      CONSULTANT_MONTHLY_TARGET;
+                          const percentage = Math.round((value / target) * 100);
                           return `${value.toLocaleString()}원\n(${percentage}%)`;
                         }
                       }
                     },
                     {
                       label: '목표 잔여금액',
-                      data: consultantAmountStats.map(stat => Math.max(0, 100000000 - stat.amounts.payment)),
+                      data: consultantAmountStats.map(stat => {
+                        const target = periodType === 'daily' ? CONSULTANT_DAILY_TARGET : 
+                                      periodType === 'weekly' ? CONSULTANT_WEEKLY_TARGET : 
+                                      CONSULTANT_MONTHLY_TARGET;
+                        return Math.max(0, target - stat.amounts.payment);
+                      }),
                       backgroundColor: 'rgba(220, 220, 220, 0.5)',
                       borderColor: 'rgba(220, 220, 220, 0.8)',
                       borderWidth: 1,
-                      stack: 'Stack 0',
                       datalabels: {
                         display: false
                       }
@@ -1144,7 +1319,9 @@ const ConsultationDashboard: React.FC = () => {
                           return value.toLocaleString() + '원';
                         }
                       },
-                      max: 100000000 // 목표금액 설정
+                      max: periodType === 'daily' ? CONSULTANT_DAILY_TARGET : 
+                           periodType === 'weekly' ? CONSULTANT_WEEKLY_TARGET : 
+                           CONSULTANT_MONTHLY_TARGET // 목표금액 설정
                     },
                     y: {
                       stacked: true,
@@ -1165,7 +1342,10 @@ const ConsultationDashboard: React.FC = () => {
                           const formattedValue = value.toLocaleString() + '원';
                           
                           if (label === '수납금액') {
-                            const percentage = Math.round((value / 100000000) * 100);
+                            const target = periodType === 'daily' ? CONSULTANT_DAILY_TARGET : 
+                                         periodType === 'weekly' ? CONSULTANT_WEEKLY_TARGET : 
+                                         CONSULTANT_MONTHLY_TARGET;
+                            const percentage = Math.round((value / target) * 100);
                             return `${label}: ${formattedValue} (목표의 ${percentage}%)`;
                           }
                           
@@ -1175,7 +1355,10 @@ const ConsultationDashboard: React.FC = () => {
                         afterLabel: function(context) {
                           const label = context.dataset.label || '';
                           if (label === '수납금액') {
-                            return `목표금액: 100,000,000원`;
+                            const target = periodType === 'daily' ? CONSULTANT_DAILY_TARGET : 
+                                         periodType === 'weekly' ? CONSULTANT_WEEKLY_TARGET : 
+                                         CONSULTANT_MONTHLY_TARGET;
+                            return `목표금액: ${target.toLocaleString()}원`;
                           }
                           return '';
                         }
@@ -1193,7 +1376,9 @@ const ConsultationDashboard: React.FC = () => {
                     },
                     title: {
                       display: true,
-                      text: '월간 목표금액: 1억원',
+                      text: periodType === 'daily' ? '일별 목표금액: 500만원' : 
+                            periodType === 'weekly' ? '주별 목표금액: 2,500만원' : 
+                            '월별 목표금액: 1억원',
                       position: 'bottom',
                       padding: {
                         top: 10,
@@ -1298,7 +1483,8 @@ const ConsultationDashboard: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="h-80">
+              <div className="h-80 relative">
+                <h5 className="text-center font-bold text-lg absolute w-full py-1 bottom-10 left-0 right-0 text-gray-800 dark:text-white z-10 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">상담금액 비율</h5>
                 <Pie
                   data={{
                     labels: consultantAmountStats.map(stat => stat.consultant),
@@ -1382,7 +1568,8 @@ const ConsultationDashboard: React.FC = () => {
                 />
               </div>
               
-              <div className="h-80">
+              <div className="h-80 relative">
+                <h5 className="text-center font-bold text-lg absolute w-full py-1 bottom-10 left-0 right-0 text-gray-800 dark:text-white z-10 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">수납금액 비율</h5>
                 <Pie
                   data={{
                     labels: consultantAmountStats.map(stat => stat.consultant),
