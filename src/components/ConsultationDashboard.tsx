@@ -14,6 +14,7 @@ import {
   ArcElement
 } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
+import { TooltipItem } from 'chart.js';
 
 // Chart.js 컴포넌트 등록
 ChartJS.register(
@@ -884,7 +885,7 @@ const ConsultationDashboard: React.FC = () => {
                   y: {
                     beginAtZero: true,
                     ticks: {
-                      callback: function(value) {
+                      callback: function(value: any) {
                         return value.toLocaleString() + '원';
                       }
                     }
@@ -893,7 +894,7 @@ const ConsultationDashboard: React.FC = () => {
                 plugins: {
                   tooltip: {
                     callbacks: {
-                      label: function(context) {
+                      label: function(context: TooltipItem<'bar'>) {
                         return `${context.dataset.label}: ${parseInt(context.raw as string).toLocaleString()}원`;
                       }
                     }
@@ -942,7 +943,7 @@ const ConsultationDashboard: React.FC = () => {
                     y: {
                       beginAtZero: true,
                       ticks: {
-                        callback: function(value) {
+                        callback: function(value: any) {
                           return value.toLocaleString() + '원';
                         }
                       }
@@ -951,7 +952,7 @@ const ConsultationDashboard: React.FC = () => {
                   plugins: {
                     tooltip: {
                       callbacks: {
-                        label: function(context) {
+                        label: function(context: TooltipItem<'bar'>) {
                           return `${context.dataset.label}: ${parseInt(context.raw as string).toLocaleString()}원`;
                         }
                       }
@@ -1002,7 +1003,7 @@ const ConsultationDashboard: React.FC = () => {
                     },
                     tooltip: {
                       callbacks: {
-                        label: function(context) {
+                        label: function(context: TooltipItem<'pie'>) {
                           const value = context.raw as number;
                           const total = (context.dataset.data as number[]).reduce((a, b) => a + b, 0);
                           const percentage = Math.round((value / total) * 100);
