@@ -455,28 +455,22 @@ const ConsultationDashboard: React.FC = () => {
                 : 0;
               
               let bgClass = 'bg-gray-200 dark:bg-gray-700';
-              let textClass = 'text-gray-800 dark:text-gray-200';
               
               switch (result) {
                 case '전체동의':
                   bgClass = 'bg-green-500';
-                  textClass = 'text-white';
                   break;
                 case '부분동의':
                   bgClass = 'bg-lime-500';
-                  textClass = 'text-white';
                   break;
                 case '비동의':
                   bgClass = 'bg-red-500';
-                  textClass = 'text-white';
                   break;
                 case '보류':
                   bgClass = 'bg-gray-500';
-                  textClass = 'text-white';
                   break;
                 case '환불':
                   bgClass = 'bg-orange-500';
-                  textClass = 'text-white';
                   break;
               }
               
