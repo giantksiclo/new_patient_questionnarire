@@ -2408,12 +2408,29 @@ const AutoRefresh = () => {
   useEffect(() => {
     const refreshInterval = setInterval(() => {
       console.log('1분이 지나 페이지를 새로고침합니다.');
-      window.location.reload();
+      
+      // 현재 URL을 저장하고 로컬 스토리지에 보관
+      const currentPath = window.location.pathname;
+      localStorage.setItem('lastVisitedPath', currentPath);
+      
+      // 현재 위치에서 새로고침 (전체 페이지 새로고침 대신)
+      window.location.href = currentPath;
     }, 60000); // 60000 밀리초 = 1분
 
     return () => {
       clearInterval(refreshInterval);
     };
+  }, []);
+
+  // 페이지 로드 시 마지막 방문 경로가 있으면 해당 페이지로 이동
+  useEffect(() => {
+    const lastPath = localStorage.getItem('lastVisitedPath');
+    const currentPath = window.location.pathname;
+    
+    // 홈페이지에 있고, 마지막 방문 경로가 존재하면 해당 경로로 이동
+    if (currentPath === '/' && lastPath && lastPath !== '/') {
+      window.location.href = lastPath;
+    }
   }, []);
 
   return null; // UI에 아무것도 렌더링하지 않음
