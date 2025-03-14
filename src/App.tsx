@@ -2404,21 +2404,44 @@ const router = createHashRouter(
 );
 
 // 자동 새로고침 컴포넌트
-const AutoRefresh = () => {
+const AutoRefresh: React.FC = () => {
   useEffect(() => {
-    const refreshInterval = setInterval(() => {
-      console.log('1분이 지나 페이지를 새로고침합니다.');
+    const checkPathAndRefresh = () => {
+      // 현재 URL의 해시 부분 확인 (HashRouter 사용 중)
+      const currentHash = window.location.hash;
       
-      // 현재 URL 저장
-      const fullPath = window.location.pathname;
-      localStorage.setItem('lastVisitedPath', fullPath);
+      // 메인 페이지인 경우에만 새로고침 타이머 설정
+      // 메인 페이지는 "/" 또는 "#/" 또는 "#"으로 끝남
+      if (currentHash === '' || currentHash === '#' || currentHash === '#/') {
+        console.log('메인 페이지에서 새로고침 타이머 설정');
+        
+        // 1분마다 새로고침 실행
+        const refreshInterval = setInterval(() => {
+          console.log('1분이 지나 메인 페이지를 새로고침합니다.');
+          window.location.reload();
+        }, 60000); // 60000 밀리초 = 1분
+        
+        // 정리 함수 반환
+        return () => {
+          console.log('새로고침 타이머 제거');
+          clearInterval(refreshInterval);
+        };
+      }
       
-      // 현재 위치에서 새로고침 (새로고침만 진행)
-      window.location.reload();
-    }, 60000); // 60000 밀리초 = 1분
-
+      // 메인 페이지가 아닌 경우 정리 함수만 반환 (타이머 설정 안함)
+      return () => {};
+    };
+    
+    // 해시 변경 이벤트 리스너 등록
+    window.addEventListener('hashchange', checkPathAndRefresh);
+    
+    // 초기 체크 및 타이머 설정
+    const cleanupTimer = checkPathAndRefresh();
+    
+    // 컴포넌트 언마운트 시 정리
     return () => {
-      clearInterval(refreshInterval);
+      window.removeEventListener('hashchange', checkPathAndRefresh);
+      cleanupTimer();
     };
   }, []);
 
