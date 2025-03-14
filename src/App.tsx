@@ -4,7 +4,7 @@ import { ThemeProvider } from './components/ThemeProvider';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Search, X } from 'lucide-react';
 import { Toast } from './components/Toast';
-import { createBrowserRouter, RouterProvider, Navigate, Route, createRoutesFromElements, Link } from 'react-router-dom';
+import { createHashRouter, RouterProvider, Navigate, Route, createRoutesFromElements, Link } from 'react-router-dom';
 import PatientConsultation from './components/PatientConsultation';
 import React, { useRef } from 'react';
 
@@ -2392,8 +2392,8 @@ function PatientQuestionnaireTable() {
   );
 }
 
-// 라우터 설정
-const router = createBrowserRouter(
+// 라우터 설정 (HashRouter 사용)
+const router = createHashRouter(
   createRoutesFromElements(
     <>
       <Route path="/" element={<PatientQuestionnaireTable />} />
