@@ -11,7 +11,8 @@ import {
   Legend,
   PointElement,
   LineElement,
-  ArcElement
+  ArcElement,
+  LineController
 } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
@@ -25,6 +26,7 @@ ChartJS.register(
   BarElement,
   PointElement,
   LineElement,
+  LineController,
   ArcElement,
   Title,
   Tooltip,
