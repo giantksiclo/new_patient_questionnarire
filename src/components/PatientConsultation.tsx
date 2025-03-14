@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
@@ -90,6 +90,18 @@ const PatientConsultation = () => {
   });
 
   const [consultations, setConsultations] = useState<ConsultationRecord[]>([]);
+
+  const [messageLoading, setMessageLoading] = useState<Record<number, boolean>>({});
+  const [messageStatus, setMessageStatus] = useState<Record<number, string>>({});
+  const [generatedMessages, setGeneratedMessages] = useState<Record<number, { custom_message?: string, next_visit_message?: string }>>({});
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<{ custom_message?: string, next_visit_message?: string } | null>(null);
+  const [selectedConsultationId, setSelectedConsultationId] = useState<number | null>(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageIsSent, setMessageIsSent] = useState(false);
+  const [sendingNextVisitMessage, setSendingNextVisitMessage] = useState(false);
+  const [nextVisitMessageIsSent, setNextVisitMessageIsSent] = useState(false);
 
   // 환자 정보 가져오기
   useEffect(() => {
@@ -362,6 +374,473 @@ const PatientConsultation = () => {
       alert(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 메시지 생성 상태 확인 함수
+  const checkMessageGenerationStatus = useCallback(async () => {
+    if (!residentId || consultations.length === 0) return;
+    
+    try {
+      const consultationIds = consultations.map(c => c.id).filter(Boolean);
+      
+      // 1. message_generation 테이블에서 이미 요청된 메시지 전체 확인
+      const { data: allRequests, error: requestError } = await supabase
+        .from('message_generation')
+        .select('id, consultation_id, message_requested_at')
+        .in('consultation_id', consultationIds as number[]);
+      
+      if (requestError) throw requestError;
+      
+      // 요청된 메시지가 있으면 상태 업데이트
+      if (allRequests && allRequests.length > 0) {
+        // 기존 상태 복사
+        const newMessageStatus = { ...messageStatus };
+        const messageIds = allRequests.map(req => req.id);
+        
+        // 2. message_storage 테이블에서 생성된 메시지 확인
+        const { data: storedMessages, error: storageError } = await supabase
+          .from('message_storage')
+          .select('id, custom_message, next_visit_message, message_send, next_message_send')
+          .in('id', messageIds);
+        
+        if (storageError) throw storageError;
+        
+        // 생성된 메시지 ID 세트 생성
+        const generatedMessageIds = new Set(storedMessages?.map(msg => msg.id) || []);
+        
+        // 각 메시지 요청에 대해 상태 업데이트
+        allRequests.forEach(request => {
+          if (request.consultation_id) {
+            // 메시지 스토리지에 데이터가 있는지 확인
+            if (generatedMessageIds.has(request.id)) {
+              newMessageStatus[request.consultation_id] = '이미 생성됨';
+            } 
+            // 요청만 되고 아직 생성되지 않은 경우
+            else if (request.message_requested_at) {
+              newMessageStatus[request.consultation_id] = '신청 완료';
+            }
+          }
+        });
+        
+        setMessageStatus(newMessageStatus);
+        
+        // 3. 생성된 메시지 내용 업데이트
+        if (storedMessages && storedMessages.length > 0) {
+          const newGeneratedMessages = { ...generatedMessages };
+          
+          // message_generation 테이블의 consultation_id와 message_storage 테이블의 id를 연결
+          allRequests.forEach(request => {
+            const storedMessage = storedMessages.find(msg => msg.id === request.id);
+            if (storedMessage && request.consultation_id) {
+              newGeneratedMessages[request.consultation_id] = {
+                custom_message: storedMessage.custom_message,
+                next_visit_message: storedMessage.next_visit_message
+              };
+            }
+          });
+          
+          setGeneratedMessages(newGeneratedMessages);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('메시지 상태 확인 중 오류 발생:', error);
+      return false;
+    }
+  }, [residentId, consultations, messageStatus, generatedMessages]);
+
+  // 주기적으로 메시지 생성 상태 확인
+  useEffect(() => {
+    // 컴포넌트 마운트 시 초기 상태 확인
+    checkMessageGenerationStatus();
+    
+    // 30초마다 상태 확인
+    const interval = setInterval(() => {
+      checkMessageGenerationStatus();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [checkMessageGenerationStatus]);
+
+  // 메시지 보기 모달
+  const viewMessage = async (consultationId: number) => {
+    try {
+      if (!generatedMessages[consultationId]) {
+        // 메시지 내용이 캐시되어 있지 않으면 조회
+        const { data: generationData, error: generationError } = await supabase
+          .from('message_generation')
+          .select('id')
+          .eq('consultation_id', consultationId)
+          .single();
+          
+        if (generationError) throw generationError;
+        
+        // message_storage 테이블에서 생성된 메시지와 전송 상태 조회
+        const { data: storageData, error: storageError } = await supabase
+          .from('message_storage')
+          .select('custom_message, next_visit_message, message_send, next_message_send')
+          .eq('id', generationData.id)
+          .single();
+          
+        if (storageError) throw storageError;
+        
+        // 메시지 내용 캐싱
+        setGeneratedMessages(prev => ({ 
+          ...prev, 
+          [consultationId]: {
+            custom_message: storageData.custom_message,
+            next_visit_message: storageData.next_visit_message
+          }
+        }));
+        
+        // 메시지 전송 상태 설정
+        setMessageIsSent(storageData.message_send || false);
+        setNextVisitMessageIsSent(storageData.next_message_send || false);
+        
+        setSelectedMessage(storageData);
+      } else {
+        // 이미 캐시된 메시지가 있는 경우 사용
+        setSelectedMessage(generatedMessages[consultationId]);
+        
+        // 전송 상태 확인
+        const { data: generationData, error: generationError } = await supabase
+          .from('message_generation')
+          .select('id')
+          .eq('consultation_id', consultationId)
+          .single();
+          
+        if (!generationError && generationData) {
+          const { data: storageData, error: storageError } = await supabase
+            .from('message_storage')
+            .select('message_send, next_message_send')
+            .eq('id', generationData.id)
+            .single();
+            
+          if (!storageError && storageData) {
+            setMessageIsSent(storageData.message_send || false);
+            setNextVisitMessageIsSent(storageData.next_message_send || false);
+          }
+        }
+      }
+      
+      // 선택된 상담 ID 저장
+      setSelectedConsultationId(consultationId);
+      // 모달 열기
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('메시지 조회 중 오류 발생:', error);
+      alert('메시지 조회에 실패했습니다.');
+    }
+  };
+  
+  // 맞춤 메시지 전송 함수 
+  const sendMessage = async () => {
+    if (!selectedConsultationId) return;
+    
+    try {
+      setSendingMessage(true);
+      
+      // 1. message_generation 테이블에서 ID 가져오기
+      const { data: generationData, error: generationError } = await supabase
+        .from('message_generation')
+        .select('id')
+        .eq('consultation_id', selectedConsultationId)
+        .single();
+        
+      if (generationError) throw generationError;
+      
+      if (!generationData) {
+        throw new Error('메시지 생성 정보를 찾을 수 없습니다.');
+      }
+      
+      // 2. message_storage 테이블의 message_send 필드 업데이트
+      const { /* data, */ error } = await supabase
+        .from('message_storage')
+        .update({ 
+          message_send: true,
+          next_message_send: false   // 다음 방문 메시지는 false로 설정
+        })
+        .eq('id', generationData.id)
+        .select();
+        
+      if (error) throw error;
+      
+      // 업데이트 성공
+      setMessageIsSent(true);
+      setNextVisitMessageIsSent(false);  // 다음 방문 메시지 상태도 업데이트
+      alert('맞춤 메시지 전송 요청이 완료되었습니다!');
+      
+    } catch (error) {
+      console.error('맞춤 메시지 전송 요청 오류:', error);
+      alert('맞춤 메시지 전송 요청 중 오류가 발생했습니다.');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  // 다음 방문 메시지 전송 함수
+  const sendNextVisitMessage = async () => {
+    if (!selectedConsultationId) return;
+    
+    try {
+      setSendingNextVisitMessage(true);
+      
+      // 1. message_generation 테이블에서 ID 가져오기
+      const { data: generationData, error: generationError } = await supabase
+        .from('message_generation')
+        .select('id')
+        .eq('consultation_id', selectedConsultationId)
+        .single();
+        
+      if (generationError) throw generationError;
+      
+      console.log('메시지 생성 ID:', generationData?.id);
+      
+      if (!generationData) {
+        throw new Error('메시지 생성 정보를 찾을 수 없습니다.');
+      }
+      
+      // 2. 테이블 구조 확인을 위해 먼저 데이터 조회
+      const { data: checkData, /* checkError */ } = await supabase
+        .from('message_storage')
+        .select('*')
+        .eq('id', generationData.id)
+        .single();
+        
+      console.log('기존 데이터:', checkData);
+      console.log('기존 next_message_send 값:', checkData?.next_message_send);
+      
+      // 3. message_storage 테이블의 next_message_send 필드 업데이트
+      const { data, error } = await supabase
+        .from('message_storage')
+        .update({ 
+          message_send: false,     // 맞춤 메시지는 false로 설정
+          next_message_send: true
+        })
+        .eq('id', generationData.id)
+        .select();
+      
+      console.log('업데이트 결과:', data);
+      console.log('업데이트 오류:', error);
+        
+      if (error) {
+        console.error('업데이트 중 오류 발생:', error);
+        throw error;
+      }
+      
+      if (!data) {
+        console.log('업데이트 결과가 없습니다.');
+      }
+      
+      if (data && data.length > 0) {
+        console.log('업데이트 후 next_message_send 값:', data[0].next_message_send);
+      }
+      
+      // 업데이트 성공
+      setMessageIsSent(false);  // 맞춤 메시지 상태도 업데이트
+      setNextVisitMessageIsSent(true);
+      alert('다음 방문 메시지 전송 요청이 완료되었습니다!');
+      
+    } catch (error) {
+      console.error('다음 방문 메시지 전송 요청 오류:', error);
+      alert('다음 방문 메시지 전송 요청 중 오류가 발생했습니다.');
+    } finally {
+      setSendingNextVisitMessage(false);
+    }
+  };
+
+  // 메시지 생성 요청 함수
+  const createMessageGenerationRequest = async (consultationId: number) => {
+    if (!patientInfo || !residentId) {
+      alert('환자 정보를 찾을 수 없습니다.');
+      return;
+    }
+    
+    try {
+      setMessageLoading(prev => ({ ...prev, [consultationId]: true }));
+      
+      // 0. 이미 메시지 생성 요청이 있는지 확인
+      const { data: existingRequest } = await supabase
+        .from('message_generation')
+        .select('id')
+        .eq('consultation_id', consultationId)
+        .single();
+      
+      if (existingRequest) {
+        console.log('이미 요청된 메시지가 있습니다:', existingRequest);
+        
+        // message_storage 테이블 확인
+        const { data: storageData } = await supabase
+          .from('message_storage')
+          .select('custom_message, next_visit_message')
+          .eq('id', existingRequest.id)
+          .single();
+        
+        if (storageData) {
+          // 이미 생성된 메시지가 있는 경우
+          setMessageStatus(prev => ({ ...prev, [consultationId]: '이미 생성됨' }));
+          
+          // 메시지 내용 저장
+          setGeneratedMessages(prev => ({ 
+            ...prev, 
+            [consultationId]: {
+              custom_message: storageData.custom_message,
+              next_visit_message: storageData.next_visit_message
+            }
+          }));
+        } else {
+          // 요청만 되고 아직 생성되지 않은 경우
+          setMessageStatus(prev => ({ ...prev, [consultationId]: '신청 완료' }));
+        }
+        
+        return existingRequest;
+      }
+      
+      // 1. 해당 상담 정보 가져오기
+      const { data: consultationData } = await supabase
+        .from('patient_consultations')
+        .select('*')
+        .eq('id', consultationId)
+        .single();
+      
+      if (!consultationData) {
+        console.error('상담 정보 조회 오류:', new Error('상담 정보를 찾을 수 없습니다.'));
+        throw new Error('상담 정보를 찾을 수 없습니다.');
+      }
+      
+      // 2. 환자 정보 가져오기 (이미 patientInfo에 있지만 전체 정보를 위해 다시 조회)
+      const { data: patientData } = await supabase
+        .from('patient_questionnaire')
+        .select('*')
+        .eq('resident_id', residentId)
+        .single();
+      
+      if (!patientData) {
+        console.error('환자 정보 조회 오류:', new Error('환자 정보를 찾을 수 없습니다.'));
+        throw new Error('환자 정보를 찾을 수 없습니다.');
+      }
+      
+      console.log('메시지 생성 데이터 준비:', {
+        patient_id: residentId,
+        consultation_id: consultationId,
+        consultation_result: consultationData.consultation_result
+      });
+      
+      // 3. message_generation 테이블에 데이터 삽입
+      const { data, error } = await supabase
+        .from('message_generation')
+        .insert({
+          patient_id: residentId,
+          consultation_id: consultationId,
+          
+          // 환자 기본 정보
+          patient_name: patientData.name,
+          phone: patientData.phone,
+          
+          // 보험 정보
+          has_private_insurance: patientData.has_private_insurance,
+          private_insurance_period: patientData.private_insurance_period,
+          insurance_company: patientData.insurance_company,
+          
+          // 내원 관련 정보
+          visit_reason: patientData.visit_reason,
+          treatment_area: patientData.treatment_area,
+          
+          // 의료 정보
+          medications: patientData.medications,
+          medical_conditions: patientData.medical_conditions,
+          
+          // 기타 건강 정보
+          pregnancy_status: patientData.pregnancy_status,
+          smoking_status: patientData.smoking_status,
+          dental_fears: patientData.dental_fears,
+          
+          // 추가 정보
+          additional_info: patientData.additional_info,
+          
+          // 상담 정보
+          consultation_result: consultationData.consultation_result,
+          today_treatment: consultationData.today_treatment,
+          next_treatment: consultationData.next_treatment,
+          appointment_date: consultationData.appointment_date,
+          appointment_time: consultationData.appointment_time,
+          consultation_memo: consultationData.consultation_memo,
+          
+          // 메시지 요청 정보
+          message_requested: true,
+          message_requested_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('메시지 생성 요청 저장 오류:', error);
+        console.error('자세한 오류 정보:', JSON.stringify(error, null, 2));
+        
+        // 중복 키 오류 처리 (이미 같은 consultation_id로 요청이 있는 경우)
+        if (error.code === '23505') {
+          setMessageStatus(prev => ({ ...prev, [consultationId]: '신청 완료' }));
+          return;
+        }
+        
+        throw error;
+      }
+      
+      console.log('메시지 생성 요청 성공:', data);
+      
+      // 4. Supabase 함수 직접 호출 시도 (선택적)
+      try {
+        // Supabase 함수 직접 호출 (함수 이름은 실제 함수명으로 변경)
+        const { data: funcData, error: funcError } = await supabase.rpc('process_message_request', {
+          message_id: data.id
+        });
+        
+        if (funcError) {
+          console.warn('함수 호출 오류 (무시됨):', funcError);
+          // 함수 오류는 무시하고 계속 진행 (비동기적으로 처리될 것이므로)
+        } else {
+          console.log('함수 호출 성공:', funcData);
+        }
+      } catch (funcCallError) {
+        console.warn('함수 호출 예외 (무시됨):', funcCallError);
+        // 함수 호출 예외도 무시 (메시지 생성 자체는 성공했으므로)
+      }
+      
+      setMessageStatus(prev => ({ ...prev, [consultationId]: '신청 완료' }));
+      return data;
+    } catch (error: any) { // 타입 명시로 TypeScript 오류 해결
+      console.error('메시지 생성 요청 중 오류 발생:', error);
+      
+      // 오류 유형에 따라 다른 메시지 표시
+      if (error.code === '23505') {
+        setMessageStatus(prev => ({ ...prev, [consultationId]: '신청 완료' }));
+      } else if (error.code === 'PGRST') {
+        setMessageStatus(prev => ({ ...prev, [consultationId]: 'DB 오류' }));
+      } else if (error.message) {
+        setMessageStatus(prev => ({ ...prev, [consultationId]: '오류: ' + error.message.substring(0, 15) + '...' }));
+      } else {
+        setMessageStatus(prev => ({ ...prev, [consultationId]: '요청 실패' }));
+      }
+      
+      throw error;
+    } finally {
+      setMessageLoading(prev => ({ ...prev, [consultationId]: false }));
+      
+      // 5초 후 상태 메시지 초기화 (신청 완료 상태는 유지)
+      setTimeout(() => {
+        setMessageStatus(prev => {
+          const newState = { ...prev };
+          // 신청 완료, 이미 생성됨 상태는 유지
+          if (newState[consultationId] && 
+              newState[consultationId] !== '신청 완료' &&
+              newState[consultationId] !== '이미 생성됨') {
+            delete newState[consultationId];
+          }
+          return newState;
+        });
+      }, 5000);
     }
   };
 
@@ -845,7 +1324,8 @@ const PatientConsultation = () => {
             <table className="min-w-full border border-gray-300 dark:border-gray-700">
               <thead>
                 <tr className="bg-gray-100 dark:bg-gray-800">
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담일</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">메시지 생성</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담일자</th>
                   <th className="p-2 border border-gray-300 dark:border-gray-700">진단원장</th>
                   <th className="p-2 border border-gray-300 dark:border-gray-700">상담자</th>
                   <th className="p-2 border border-gray-300 dark:border-gray-700">상담결과</th>
@@ -860,6 +1340,34 @@ const PatientConsultation = () => {
               <tbody>
                 {consultations.map((consultation) => (
                   <tr key={consultation.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {messageLoading[consultation.id!] ? (
+                        <div className="flex items-center justify-center space-x-1">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-75"></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-150"></div>
+                        </div>
+                      ) : generatedMessages[consultation.id!] ? (
+                        <button
+                          onClick={() => consultation.id && viewMessage(consultation.id)}
+                          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded text-sm"
+                        >
+                          메시지 보기
+                        </button>
+                      ) : messageStatus[consultation.id!] ? (
+                        <div className={`text-sm ${messageStatus[consultation.id!].includes('오류') || messageStatus[consultation.id!].includes('실패') ? 'text-red-500' : 'text-green-500'}`}>
+                              {messageStatus[consultation.id!]}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => consultation.id && createMessageGenerationRequest(consultation.id)}
+                              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-1 px-2 rounded text-sm"
+                              disabled={messageLoading[consultation.id!]}
+                            >
+                              메시지 생성
+                            </button>
+                          )}
+                    </td>
                     <td className="p-2 border border-gray-300 dark:border-gray-700">
                       {consultation.consultation_date
                         ? new Date(consultation.consultation_date).toLocaleDateString()
@@ -904,6 +1412,87 @@ const PatientConsultation = () => {
           </div>
         )}
       </div>
+
+      {/* 메시지 보기 모달 */}
+      {isModalOpen && selectedMessage && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white text-black rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">생성된 메시지</h3>
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setSelectedMessage(null);
+                  setSelectedConsultationId(null);
+                  setSendingMessage(false);
+                  setMessageIsSent(false);
+                  setSendingNextVisitMessage(false);
+                  setNextVisitMessageIsSent(false);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                닫기
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="font-medium text-gray-900">맞춤 메시지:</h4>
+                <div>
+                  {messageIsSent ? (
+                    <span className="inline-block bg-green-500 text-white px-2 py-1 rounded text-sm">
+                      전송 완료
+                    </span>
+                  ) : (
+                    <button
+                      onClick={sendMessage}
+                      disabled={sendingMessage}
+                      className={`px-3 py-1 rounded text-white text-sm ${
+                        sendingMessage
+                          ? "bg-blue-300 cursor-wait"
+                          : "bg-blue-500 hover:bg-blue-600"
+                      }`}
+                    >
+                      {sendingMessage ? "전송 중..." : "맞춤 메시지 전송"}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="bg-gray-50 p-3 rounded whitespace-pre-wrap text-gray-900">
+                {selectedMessage.custom_message || "맞춤 메시지가 생성되지 않았습니다."}
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="font-medium text-gray-900">다음 방문 메시지:</h4>
+                <div>
+                  {nextVisitMessageIsSent ? (
+                    <span className="inline-block bg-green-500 text-white px-2 py-1 rounded text-sm">
+                      전송 완료
+                    </span>
+                  ) : (
+                    <button
+                      onClick={sendNextVisitMessage}
+                      disabled={sendingNextVisitMessage}
+                      className={`px-3 py-1 rounded text-white text-sm ${
+                        sendingNextVisitMessage
+                          ? "bg-blue-300 cursor-wait"
+                          : "bg-blue-500 hover:bg-blue-600"
+                      }`}
+                    >
+                      {sendingNextVisitMessage ? "전송 중..." : "방문 메시지 전송"}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="bg-gray-50 p-3 rounded whitespace-pre-wrap text-gray-900">
+                {selectedMessage.next_visit_message || "다음 방문 메시지가 생성되지 않았습니다."}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

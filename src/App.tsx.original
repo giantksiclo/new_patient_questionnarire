@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import { ThemeProvider } from './components/ThemeProvider';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -2403,26 +2403,9 @@ const router = createBrowserRouter(
   )
 );
 
-// 자동 새로고침 컴포넌트
-const AutoRefresh = () => {
-  useEffect(() => {
-    const refreshInterval = setInterval(() => {
-      console.log('1분이 지나 페이지를 새로고침합니다.');
-      window.location.reload();
-    }, 60000); // 60000 밀리초 = 1분
-
-    return () => {
-      clearInterval(refreshInterval);
-    };
-  }, []);
-
-  return null; // UI에 아무것도 렌더링하지 않음
-};
-
 function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-      <AutoRefresh />
       <RouterProvider router={router} />
     </ThemeProvider>
   );
