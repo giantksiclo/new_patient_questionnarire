@@ -13,7 +13,7 @@ import {
   LineElement,
   ArcElement
 } from 'chart.js';
-import { Bar, Line, Pie } from 'react-chartjs-2';
+import { Bar, Pie } from 'react-chartjs-2';
 
 // Chart.js 컴포넌트 등록
 ChartJS.register(
