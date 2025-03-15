@@ -1181,7 +1181,7 @@ const ConsultationDashboard: React.FC = () => {
                   </td>
                   <td className="p-2 border border-gray-300 dark:border-gray-700">
                     <button
-                      onClick={() => navigate(`/consultation/${consultation.patient_id}`)}
+                      onClick={() => navigate(`/consultation/${consultation.patient_id}?consultationId=${consultation.id}`)}
                       className="bg-blue-500 hover:bg-blue-600 text-white text-sm py-1 px-2 rounded"
                     >
                       상세보기

@@ -189,6 +189,7 @@ function PatientQuestionnaireTable() {
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [consultationCounts, setConsultationCounts] = useState<Record<string, number>>({});
+  const [consultationStatuses, setConsultationStatuses] = useState<Record<string, string>>({});
   const [consultationConsultants, setConsultationConsultants] = useState<Record<string, string[]>>({});
   const [uniqueConsultants, setUniqueConsultants] = useState<string[]>([]);
   const [selectedConsultant, setSelectedConsultant] = useState('');
@@ -203,6 +204,9 @@ function PatientQuestionnaireTable() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientQuestionnaire | null>(null);
   
+  // useState 부분에 statusFilter 상태 변수 추가
+  const [statusFilter, setStatusFilter] = useState<string>('');
+
   // 환자 정보 전체보기 함수
   const openDetailModal = (patient: PatientQuestionnaire) => {
     setSelectedPatient(patient);
@@ -375,8 +379,9 @@ function PatientQuestionnaireTable() {
       // Supabase에서 상담 정보 가져오기 (상담자 정보 포함)
       const { data, error } = await supabase
         .from('patient_consultations')
-        .select('patient_id, id, consultant')
-        .in('patient_id', residentIds);
+        .select('patient_id, id, consultant, treatment_status, consultation_date')
+        .in('patient_id', residentIds)
+        .order('consultation_date', { ascending: false });
       
       if (error) {
         console.error('상담 정보 가져오기 실패:', error);
@@ -390,8 +395,13 @@ function PatientQuestionnaireTable() {
         const counts: Record<string, number> = {};
         // 환자별 상담자 목록 (중복 제거)
         const consultants: Record<string, string[]> = {};
+        // 환자별 최신 상담 상태
+        const statuses: Record<string, string> = {};
         // 전체 상담자 목록 (중복 제거)
         const allConsultants = new Set<string>();
+        
+        // 환자별로 가장 최근 상담 레코드 저장
+        const latestConsultations: Record<string, any> = {};
         
         data.forEach(item => {
           if (item.patient_id) {
@@ -411,11 +421,24 @@ function PatientQuestionnaireTable() {
                 consultants[item.patient_id].push(item.consultant);
               }
             }
+            
+            // 최신 상담 정보 저장 (정렬이 이미 최신순이므로 처음 나오는 것이 최신)
+            if (!latestConsultations[item.patient_id]) {
+              latestConsultations[item.patient_id] = item;
+              
+              // 치료 상태가 있으면 저장
+              if (item.treatment_status) {
+                statuses[item.patient_id] = item.treatment_status;
+              }
+            }
           }
         });
         
         setConsultationCounts(counts);
         setConsultationConsultants(consultants);
+        setConsultationStatuses(statuses); // 최신 상담 상태 설정
+        
+        console.log('상담 상태 정보:', statuses);
         
         // 전체 상담자 목록 정렬하여 설정
         const sortedConsultants = Array.from(allConsultants).sort();
@@ -1272,6 +1295,36 @@ function PatientQuestionnaireTable() {
     setEndDate(yesterdayString);
   };
 
+  // 상담 상태 필터 함수
+  const filterByStatus = (status: string) => {
+    // 현재 필터가 선택된 상태라면 초기화
+    if (statusFilter === status) {
+      setStatusFilter('');
+    } else {
+      setStatusFilter(status);
+    }
+  };
+
+  // 종결 필터
+  const setCompletedFilter = () => {
+    filterByStatus('종결');
+  };
+
+  // 중단 필터
+  const setPausedFilter = () => {
+    filterByStatus('중단 중');
+  };
+
+  // 치료중 필터 추가
+  const setInTreatmentFilter = () => {
+    filterByStatus('치료중');
+  };
+
+  // 필터 초기화
+  const resetStatusFilter = () => {
+    setStatusFilter('');
+  };
+
   // 필터링 및 정렬 함수
   const filteredAndSortedData = useMemo(() => {
     // 검색어 필터링
@@ -1388,7 +1441,29 @@ function PatientQuestionnaireTable() {
         }
       }
       
-      return searchableText.includes(filterText.toLowerCase()) && passDateFilter && passConsultantFilter;
+      // passConsultantFilter 바로 아래에 상담 상태 필터 추가
+      // 상담 상태 필터링
+      let passStatusFilter = true;
+      
+      // 선택된 상태 필터가 있는 경우에만 필터링 적용
+      if (statusFilter) {
+        passStatusFilter = false;
+        
+        // '치료중' 필터인 경우 특별 처리
+        if (statusFilter === '치료중') {
+          // 상담 상태가 있고, '중단 중'이나 '종결'이 아닌 경우
+          const status = consultationStatuses[item.resident_id];
+          if (status && status !== '중단 중' && status !== '종결') {
+            passStatusFilter = true;
+          }
+        } 
+        // 다른 상태 필터는 정확히 일치하는지 확인
+        else if (consultationStatuses[item.resident_id] === statusFilter) {
+          passStatusFilter = true;
+        }
+      }
+      
+      return searchableText.includes(filterText.toLowerCase()) && passDateFilter && passConsultantFilter && passStatusFilter;
     });
     
     // 정렬
@@ -1419,7 +1494,7 @@ function PatientQuestionnaireTable() {
         ? (aValue > bValue ? 1 : -1)
         : (aValue > bValue ? -1 : 1);
     });
-  }, [questionnaires, filterText, sortField, sortOrder, startDate, endDate, selectedConsultant, consultationConsultants]);
+  }, [questionnaires, filterText, sortField, sortOrder, startDate, endDate, selectedConsultant, consultationConsultants, statusFilter, consultationStatuses]);
 
   // 소개자 정보 묶음 표시 함수
   const renderReferrerInfo = (item: PatientQuestionnaire, index: number, isModal: boolean = false) => {
@@ -2046,6 +2121,53 @@ function PatientQuestionnaireTable() {
             초기화
           </button>
         )}
+        
+        {/* 구분선 */}
+        <div className="mx-1 border-l border-gray-300 dark:border-gray-600"></div>
+        
+        {/* 상담 상태 필터 버튼 */}
+        <button
+          onClick={setCompletedFilter}
+          className={`text-xs ${
+            statusFilter === '종결' 
+              ? 'bg-purple-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
+          title="종결된 환자만 보기"
+        >
+          종결
+        </button>
+        <button
+          onClick={setPausedFilter}
+          className={`text-xs ${
+            statusFilter === '중단 중' 
+              ? 'bg-red-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
+          title="중단된 환자만 보기"
+        >
+          중단
+        </button>
+        <button
+          onClick={setInTreatmentFilter}
+          className={`text-xs ${
+            statusFilter === '치료중' 
+              ? 'bg-yellow-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
+          title="치료중인 환자만 보기"
+        >
+          치료중
+        </button>
+        {statusFilter && (
+          <button
+            onClick={resetStatusFilter}
+            className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+            title="상담 상태 필터 초기화"
+          >
+            상태 초기화
+          </button>
+        )}
       </div>
       
       <div className="text-sm mb-2">
@@ -2117,11 +2239,36 @@ function PatientQuestionnaireTable() {
                       <div className="flex flex-col gap-1">
                         <Link
                           to={`/consultation/${item.resident_id}`}
-                          className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded text-sm flex items-center justify-center gap-1"
+                          className={`${
+                            consultationStatuses[item.resident_id] === "중단 중" 
+                              ? "bg-red-500 hover:bg-red-600" 
+                              : consultationStatuses[item.resident_id] === "종결" 
+                                ? "bg-purple-500 hover:bg-purple-600" 
+                                : consultationStatuses[item.resident_id] && consultationStatuses[item.resident_id] !== "중단 중" && consultationStatuses[item.resident_id] !== "종결"
+                                  ? "bg-yellow-500 hover:bg-yellow-600"
+                                  : "bg-blue-500 hover:bg-blue-600"
+                          } text-white p-1 rounded text-sm flex items-center justify-center gap-1`}
                           aria-label="상담"
-                          title="상담 기록 보기/추가"
+                          title={
+                            consultationStatuses[item.resident_id] === "중단 중" 
+                              ? "상담이 중단된 환자" 
+                              : consultationStatuses[item.resident_id] === "종결" 
+                                ? "상담이 종결된 환자" 
+                                : consultationStatuses[item.resident_id] && consultationStatuses[item.resident_id] !== "중단 중" && consultationStatuses[item.resident_id] !== "종결"
+                                  ? `치료중인 환자 (${consultationStatuses[item.resident_id]})`
+                                  : "상담 기록 보기/추가"
+                          }
                         >
-                          <span>상담</span>
+                          <span>
+                            {consultationStatuses[item.resident_id] === "중단 중" 
+                              ? "중단" 
+                              : consultationStatuses[item.resident_id] === "종결" 
+                                ? "종결" 
+                                : consultationStatuses[item.resident_id] && consultationStatuses[item.resident_id] !== "중단 중" && consultationStatuses[item.resident_id] !== "종결"
+                                  ? "치료중"
+                                  : "상담"
+                            }
+                          </span>
                           {consultationCounts[item.resident_id] > 0 && (
                             <span className="bg-white text-blue-600 text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                               {consultationCounts[item.resident_id]}
