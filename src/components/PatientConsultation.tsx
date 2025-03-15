@@ -1845,21 +1845,28 @@ const PatientConsultation = () => {
         <div className="flex items-center gap-3 mb-4">
           <h2 className="text-xl font-semibold">상담 기록 내역</h2>
           {consultations.length > 0 && consultations[0]?.treatment_status && (
-            <span className={`px-3 py-1 text-sm font-medium rounded-full ${
-              consultations[0].treatment_status === '중단 중' 
-                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
-                : consultations[0].treatment_status === '종결' 
-                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                  : consultations[0].treatment_status === '진행중'
-                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                    : consultations[0].treatment_status.includes('대기')
-                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                      : consultations[0].treatment_status === '근관치료 중'
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-            }`}>
-              {consultations[0].treatment_status}
-            </span>
+            <>
+              <span className={`px-3 py-1 text-sm font-medium rounded-full ${
+                consultations[0].treatment_status === '중단 중' 
+                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
+                  : consultations[0].treatment_status === '종결' 
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                    : consultations[0].treatment_status === '진행중'
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      : consultations[0].treatment_status.includes('대기')
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                        : consultations[0].treatment_status === '근관치료 중'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+              }`}>
+                {consultations[0].treatment_status}
+              </span>
+              {consultations[0].treatment_status === '중단 중' && consultations[0].suspension_reason && (
+                <span className="px-3 py-1 text-sm font-medium rounded-full bg-red-50 text-red-600 dark:bg-red-800/30 dark:text-red-300">
+                  중단 사유: {consultations[0].suspension_reason}
+                </span>
+              )}
+            </>
           )}
         </div>
         {consultations.length === 0 ? (
