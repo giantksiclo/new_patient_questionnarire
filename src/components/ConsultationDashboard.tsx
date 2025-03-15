@@ -91,6 +91,11 @@ const ConsultationDashboard: React.FC = () => {
   const [consultations, setConsultations] = useState<ConsultationRecord[]>([]);
   const [consultantStats, setConsultantStats] = useState<ConsultantStats[]>([]);
   const [selectedConsultant, setSelectedConsultant] = useState<string>('');
+  // 진단원장 관련 상태 추가
+  const [doctorStats, setDoctorStats] = useState<{doctor: string, count: number}[]>([]);
+  // 전체 진단원장 목록을 저장할 새로운 상태 추가
+  const [allDoctors, setAllDoctors] = useState<{doctor: string, count: number}[]>([]);
+  const [selectedDoctor, setSelectedDoctor] = useState<string>('');
   const [dateRange, setDateRange] = useState<DateRange>('thisMonth');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -123,10 +128,10 @@ const ConsultationDashboard: React.FC = () => {
       
       // 약간의 지연 후 실행 (상태 업데이트 확인을 위해)
       setTimeout(() => {
-        fetchConsultations(startDate, endDate);
+        fetchConsultations(startDate, endDate, selectedDoctor);
       }, 100);
     }
-  }, [dateRange, startDate, endDate]);
+  }, [dateRange, startDate, endDate, selectedDoctor]);  // selectedDoctor 의존성 추가
 
   // 상담자별 통계 계산
   useEffect(() => {
@@ -155,12 +160,13 @@ const ConsultationDashboard: React.FC = () => {
   }, [consultations, periodType]);
 
   // 상담 기록 가져오기
-  const fetchConsultations = async (currentStartDate: string, currentEndDate: string) => {
+  const fetchConsultations = async (currentStartDate: string, currentEndDate: string, doctor: string = '') => {
     try {
       setLoading(true);
       
       console.log('----------- 데이터 조회 시작 -----------');
       console.log(`조회 기간: ${currentStartDate || '전체'} ~ ${currentEndDate || '전체'}`);
+      if (doctor) console.log(`진단원장: ${doctor}`);
       
       // 캐시 무시 쿼리 매개변수
       const nocache = getNoCacheQuery();
@@ -186,12 +192,19 @@ const ConsultationDashboard: React.FC = () => {
         console.log('date 필터 적용 - 종료일(다음날):', nextDay);
       }
       
+      // 진단원장 필터 적용
+      if (doctor) {
+        query = query.eq('doctor', doctor);
+        console.log('진단원장 필터 적용:', doctor);
+      }
+      
       // 실제 쿼리 로그
       console.log('실행되는 쿼리 조건:', {
         table: 'patient_consultations',
         startDate: currentStartDate || 'none',
         endDate: currentEndDate ? moment(currentEndDate).add(1, 'days').format('YYYY-MM-DD') : 'none',
-        nocache: nocache // 캐시 방지 쿼리 파라미터 추가
+        nocache: nocache, // 캐시 방지 쿼리 파라미터 추가
+        doctor: doctor // 진단원장 필터 추가
       });
       
       // 콘솔에 전체 SQL 유사 쿼리 표시 (디버깅용)
@@ -272,10 +285,31 @@ const ConsultationDashboard: React.FC = () => {
         setFilteredDataCount(0);
         setTotalDataCount(0);
       }
+      
+      // 결과 할당 및 상태 업데이트
+      setConsultations(consultationsData || []);
+      
+      // 진단원장 통계 계산
+      if (consultationsData && consultationsData.length > 0) {
+        calculateDoctorStats(consultationsData);
+      }
+      
+      // 모든 진단원장 데이터를 가져오는 쿼리 (필터링 없이)
+      if (allDoctors.length === 0) {
+        const { data: allConsultationsData } = await supabase
+          .from('patient_consultations')
+          .select('doctor')
+          .order('doctor');
+          
+        if (allConsultationsData && allConsultationsData.length > 0) {
+          fetchAllDoctors(allConsultationsData);
+        }
+      }
+      
+      setLoading(false);
     } catch (error) {
       console.error('상담 기록 불러오기 실패:', error);
       setError('상담 기록을 불러오는 중 오류가 발생했습니다.');
-    } finally {
       setLoading(false);
     }
   };
@@ -448,7 +482,7 @@ const ConsultationDashboard: React.FC = () => {
     
     // 캐시 없이 현재 설정된 필터로 데이터 다시 가져오기
     setTimeout(() => {
-      fetchConsultations(startDate, endDate);
+      fetchConsultations(startDate, endDate, selectedDoctor);
     }, 100);
   };
   
@@ -684,6 +718,55 @@ const ConsultationDashboard: React.FC = () => {
     setPeriodType(e.target.value as 'daily' | 'weekly' | 'monthly');
   };
 
+  // 진단원장 통계 계산 함수 추가
+  const calculateDoctorStats = (data: ConsultationRecord[]) => {
+    // 모든 진단원장 목록 추출
+    const doctors = [...new Set(data.map(c => c.doctor))].filter(Boolean);
+    
+    // 진단원장별 통계 계산
+    const stats = doctors.map(doctor => {
+      // 해당 진단원장의 상담 기록 수
+      const count = data.filter(c => c.doctor === doctor).length;
+      
+      return {
+        doctor,
+        count
+      };
+    });
+    
+    // 상담 건수 기준 내림차순 정렬
+    stats.sort((a, b) => b.count - a.count);
+    
+    setDoctorStats(stats);
+  };
+
+  // 선택된 진단원장 변경 핸들러
+  const handleDoctorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedDoctor(e.target.value);
+  };
+
+  // 모든 진단원장 목록 계산 함수 추가
+  const fetchAllDoctors = (data: any[]) => {
+    // 모든 진단원장 목록 추출
+    const doctors = [...new Set(data.map(c => c.doctor))].filter(Boolean);
+    
+    // 진단원장별 통계 계산
+    const stats = doctors.map(doctor => {
+      // 해당 진단원장의 상담 기록 수
+      const count = data.filter(c => c.doctor === doctor).length;
+      
+      return {
+        doctor,
+        count
+      };
+    });
+    
+    // 상담 건수 기준 내림차순 정렬
+    stats.sort((a, b) => b.count - a.count);
+    
+    setAllDoctors(stats);
+  };
+
   if (loading) {
     return <div className="p-8 text-center">데이터를 불러오는 중...</div>;
   }
@@ -707,7 +790,7 @@ const ConsultationDashboard: React.FC = () => {
   return (
     <div className="p-4 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">상담 통계 대시보드</h1>
+        <h1 className="text-2xl font-bold">상담 통계</h1>
         <button
           onClick={() => navigate('/')}
           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-1"
@@ -731,6 +814,28 @@ const ConsultationDashboard: React.FC = () => {
               {consultantStats.map(stat => (
                 <option key={stat.consultant} value={stat.consultant}>
                   {stat.consultant} ({stat.totalConsultations}건)
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          {/* 진단원장 선택 필터 추가 */}
+          <div>
+            <label className="block text-sm font-medium mb-1">진단원장 선택</label>
+            <select
+              value={selectedDoctor}
+              onChange={handleDoctorChange}
+              className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+            >
+              <option value="">전체 진단원장</option>
+              {allDoctors.length > 0 ? allDoctors.map(stat => (
+                <option key={stat.doctor} value={stat.doctor}>
+                  {stat.doctor} ({stat.count}건)
+                </option>
+              )) :
+              doctorStats.map(stat => (
+                <option key={stat.doctor} value={stat.doctor}>
+                  {stat.doctor} ({stat.count}건)
                 </option>
               ))}
             </select>
@@ -791,12 +896,13 @@ const ConsultationDashboard: React.FC = () => {
               </p>
               <button
                 onClick={handleResetFilter}
-                className="px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 dark:bg-indigo-900 dark:text-indigo-200 dark:hover:bg-indigo-800 transition-colors ml-2"
-                title="필터 재적용 (캐시 초기화)"
+                className="px-4 py-2 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700 transition-colors ml-2 flex items-center gap-2"
+                title="기간 필터 적용"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                 </svg>
+                <span>기간 필터 적용</span>
               </button>
               {/* 개발용 테스트 버튼 제거 */}
             </div>

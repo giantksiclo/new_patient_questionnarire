@@ -2419,6 +2419,12 @@ const AutoRefresh: React.FC = () => {
       // 현재 URL의 해시 부분 확인 (HashRouter 사용 중)
       const currentHash = window.location.hash;
       
+      // 대시보드 페이지인 경우 새로고침 타이머 설정하지 않음
+      if (currentHash.includes('/dashboard')) {
+        console.log('대시보드 페이지에서는 자동 새로고침을 설정하지 않습니다.');
+        return () => {}; // 타이머 설정 안함
+      }
+      
       // 메인 페이지인 경우에만 새로고침 타이머 설정
       // 메인 페이지는 "/" 또는 "#/" 또는 "#"으로 끝남
       if (currentHash === '' || currentHash === '#' || currentHash === '#/') {
