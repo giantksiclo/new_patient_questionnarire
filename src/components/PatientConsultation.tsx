@@ -1376,6 +1376,163 @@ const PatientConsultation = () => {
         </div>
       </div>
 
+      {/* 상담 기록 내역 섹션을 가장 상단으로 이동 */}
+      <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-xl font-semibold">상담 기록 내역</h2>
+          {consultations.length > 0 && consultations[0]?.treatment_status && (
+            <>
+              <span className={`px-3 py-1 text-sm font-medium rounded-full ${
+                consultations[0].treatment_status === '중단 중' 
+                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
+                  : consultations[0].treatment_status === '종결' 
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                    : consultations[0].treatment_status === '진행중'
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      : consultations[0].treatment_status.includes('대기')
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                        : consultations[0].treatment_status === '근관치료 중'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+              }`}>
+                {consultations[0].treatment_status}
+              </span>
+              {consultations[0].treatment_status === '중단 중' && consultations[0].suspension_reason && (
+                <span className="px-3 py-1 text-sm font-medium rounded-full bg-red-50 text-red-600 dark:bg-red-800/30 dark:text-red-300">
+                  중단 사유: {consultations[0].suspension_reason}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        {consultations.length === 0 ? (
+          <p className="text-gray-500 dark:text-gray-400">
+            아직 기록된 상담 내역이 없습니다.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full border border-gray-300 dark:border-gray-700">
+              <thead>
+                <tr className="bg-gray-100 dark:bg-gray-800">
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">메시지 생성</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담일자</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">진단원장</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담자</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담결과</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">진단금액</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">수납금액</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">당일치료</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">다음진료</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">예약정보</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담메모</th>
+                  <th className="p-2 border border-gray-300 dark:border-gray-700 sticky right-0 z-10 bg-gray-100 dark:bg-gray-800 shadow-md">액션</th>
+                </tr>
+              </thead>
+              <tbody>
+                {consultations.map((consultation) => (
+                  <tr key={consultation.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {messageLoading[consultation.id!] ? (
+                        <div className="flex items-center justify-center space-x-1">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-75"></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-150"></div>
+                        </div>
+                      ) : generatedMessages[consultation.id!] ? (
+                        <button
+                          onClick={() => consultation.id && viewMessage(consultation.id)}
+                          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded text-sm"
+                        >
+                          메시지 보기
+                        </button>
+                      ) : messageStatus[consultation.id!] ? (
+                        <div className={`text-sm ${messageStatus[consultation.id!].includes('오류') || messageStatus[consultation.id!].includes('실패') ? 'text-red-500' : 'text-green-500'}`}>
+                              {messageStatus[consultation.id!]}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => consultation.id && createMessageGenerationRequest(consultation.id)}
+                              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-1 px-2 rounded text-sm"
+                              disabled={messageLoading[consultation.id!]}
+                            >
+                              메시지 생성
+                            </button>
+                          )}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.consultation_date
+                        ? new Date(consultation.consultation_date).toLocaleDateString()
+                        : ''}
+                      {/* 마지막 수정일 표시 */}
+                      {consultation.last_modified_at && (
+                        <div className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                          <span className="flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            {formatDateDisplay(consultation.last_modified_at)}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.doctor}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.consultant}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.consultation_result}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {/* 진단금액 - 천단위 콤마 적용 */}
+                      {formatNumber(consultation.diagnosis_amount) || '0'}원
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {/* 수납금액 - 천단위 콤마 적용 */}
+                      {formatNumber(consultation.payment_amount) || '0'}원
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.today_treatment || '-'}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.next_treatment || '-'}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.appointment_date ? (
+                        <>
+                          {new Date(consultation.appointment_date).toLocaleDateString()} 
+                          {consultation.appointment_time ? ` ${consultation.appointment_time}` : ''}
+                        </>
+                      ) : '-'}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">
+                      {consultation.consultation_memo}
+                    </td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700 sticky right-0 z-10 bg-white dark:bg-gray-900 shadow-md">
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => consultation.id && openEditModal(consultation)}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-2 rounded text-sm"
+                        >
+                          수정
+                        </button>
+                        <button
+                          onClick={() => consultation.id && openDeleteModal(consultation.id)}
+                          className="bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-sm"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {patientInfo && (
         <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-6">
           <h2 className="text-xl font-semibold mb-3">환자 정보</h2>
@@ -1839,162 +1996,6 @@ const PatientConsultation = () => {
             </button>
           </div>
         </form>
-      </div>
-
-      <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md">
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-xl font-semibold">상담 기록 내역</h2>
-          {consultations.length > 0 && consultations[0]?.treatment_status && (
-            <>
-              <span className={`px-3 py-1 text-sm font-medium rounded-full ${
-                consultations[0].treatment_status === '중단 중' 
-                  ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
-                  : consultations[0].treatment_status === '종결' 
-                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                    : consultations[0].treatment_status === '진행중'
-                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                      : consultations[0].treatment_status.includes('대기')
-                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                        : consultations[0].treatment_status === '근관치료 중'
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-              }`}>
-                {consultations[0].treatment_status}
-              </span>
-              {consultations[0].treatment_status === '중단 중' && consultations[0].suspension_reason && (
-                <span className="px-3 py-1 text-sm font-medium rounded-full bg-red-50 text-red-600 dark:bg-red-800/30 dark:text-red-300">
-                  중단 사유: {consultations[0].suspension_reason}
-                </span>
-              )}
-            </>
-          )}
-        </div>
-        {consultations.length === 0 ? (
-          <p className="text-gray-500 dark:text-gray-400">
-            아직 기록된 상담 내역이 없습니다.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border border-gray-300 dark:border-gray-700">
-              <thead>
-                <tr className="bg-gray-100 dark:bg-gray-800">
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">메시지 생성</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담일자</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">진단원장</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담자</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담결과</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">진단금액</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">수납금액</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">당일치료</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">다음진료</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">예약정보</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700">상담메모</th>
-                  <th className="p-2 border border-gray-300 dark:border-gray-700 sticky right-0 z-10 bg-gray-100 dark:bg-gray-800 shadow-md">액션</th>
-                </tr>
-              </thead>
-              <tbody>
-                {consultations.map((consultation) => (
-                  <tr key={consultation.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {messageLoading[consultation.id!] ? (
-                        <div className="flex items-center justify-center space-x-1">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-75"></div>
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-150"></div>
-                        </div>
-                      ) : generatedMessages[consultation.id!] ? (
-                        <button
-                          onClick={() => consultation.id && viewMessage(consultation.id)}
-                          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded text-sm"
-                        >
-                          메시지 보기
-                        </button>
-                      ) : messageStatus[consultation.id!] ? (
-                        <div className={`text-sm ${messageStatus[consultation.id!].includes('오류') || messageStatus[consultation.id!].includes('실패') ? 'text-red-500' : 'text-green-500'}`}>
-                              {messageStatus[consultation.id!]}
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => consultation.id && createMessageGenerationRequest(consultation.id)}
-                              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-1 px-2 rounded text-sm"
-                              disabled={messageLoading[consultation.id!]}
-                            >
-                              메시지 생성
-                            </button>
-                          )}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {consultation.consultation_date
-                        ? new Date(consultation.consultation_date).toLocaleDateString()
-                        : ''}
-                      {/* 마지막 수정일 표시 */}
-                      {consultation.last_modified_at && (
-                        <div className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                          <span className="flex items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            {formatDateDisplay(consultation.last_modified_at)}
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {consultation.doctor}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {consultation.consultant}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {consultation.consultation_result}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {/* 진단금액 - 천단위 콤마 적용 */}
-                      {formatNumber(consultation.diagnosis_amount) || '0'}원
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {/* 수납금액 - 천단위 콤마 적용 */}
-                      {formatNumber(consultation.payment_amount) || '0'}원
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {consultation.today_treatment || '-'}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {consultation.next_treatment || '-'}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {consultation.appointment_date ? (
-                        <>
-                          {new Date(consultation.appointment_date).toLocaleDateString()} 
-                          {consultation.appointment_time ? ` ${consultation.appointment_time}` : ''}
-                        </>
-                      ) : '-'}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700">
-                      {consultation.consultation_memo}
-                    </td>
-                    <td className="p-2 border border-gray-300 dark:border-gray-700 sticky right-0 z-10 bg-white dark:bg-gray-900 shadow-md">
-                      <div className="flex flex-col gap-2">
-                        <button
-                          onClick={() => consultation.id && openEditModal(consultation)}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-2 rounded text-sm"
-                        >
-                          수정
-                        </button>
-                        <button
-                          onClick={() => consultation.id && openDeleteModal(consultation.id)}
-                          className="bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-sm"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       {/* 메시지 보기 모달 */}
