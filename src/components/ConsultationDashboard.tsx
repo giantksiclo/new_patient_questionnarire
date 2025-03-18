@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, getNoCacheQuery } from '../supabaseClient';
 import {
@@ -103,6 +103,12 @@ const ConsultationDashboard: React.FC = () => {
   const [dateAmountStats, setDateAmountStats] = useState<DateAmountStats[]>([]);
   const [consultantAmountStats, setConsultantAmountStats] = useState<ConsultantAmountStats[]>([]);
   const [periodType, setPeriodType] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
+  // 내원경로 관련 상태 추가
+  const [referralSources, setReferralSources] = useState<{source: string, count: number}[]>([]);
+  const [selectedReferralSource, setSelectedReferralSource] = useState<string>('');
+  // 모든 환자의 내원경로 통계 추가
+  const [allPatientReferralSources, setAllPatientReferralSources] = useState<{source: string, count: number}[]>([]);
+  const [totalPatientCount, setTotalPatientCount] = useState<number>(0);
   // 목표 금액 상수 추가
   const DAILY_TARGET = 20000000; // 일별 목표: 2,000만원 (수정됨)
   const WEEKLY_TARGET = 100000000; // 주별 목표: 1억원 (수정됨)
@@ -113,6 +119,14 @@ const ConsultationDashboard: React.FC = () => {
   const CONSULTANT_MONTHLY_TARGET = 100000000; // 월별 목표: 1억원
   const [filteredDataCount, setFilteredDataCount] = useState<number>(0);
   const [totalDataCount, setTotalDataCount] = useState<number>(0);
+
+  // 표 드래그 관련 상태와 ref 추가
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [startY, setStartY] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
 
   // 상담 기록 가져오기
   useEffect(() => {
@@ -128,10 +142,12 @@ const ConsultationDashboard: React.FC = () => {
       
       // 약간의 지연 후 실행 (상태 업데이트 확인을 위해)
       setTimeout(() => {
-        fetchConsultations(startDate, endDate, selectedDoctor);
+        fetchConsultations(startDate, endDate, selectedDoctor, selectedReferralSource);
+        // 모든 환자의 내원경로 데이터 가져오기
+        fetchAllPatientsReferralSources(startDate, endDate);
       }, 100);
     }
-  }, [dateRange, startDate, endDate, selectedDoctor]);  // selectedDoctor 의존성 추가
+  }, [dateRange, startDate, endDate, selectedDoctor, selectedReferralSource]);  // selectedReferralSource 의존성 추가
 
   // 상담자별 통계 계산
   useEffect(() => {
@@ -160,13 +176,14 @@ const ConsultationDashboard: React.FC = () => {
   }, [consultations, periodType]);
 
   // 상담 기록 가져오기
-  const fetchConsultations = async (currentStartDate: string, currentEndDate: string, doctor: string = '') => {
+  const fetchConsultations = async (currentStartDate: string, currentEndDate: string, doctor: string = '', referralSource: string = '') => {
     try {
       setLoading(true);
       
       console.log('----------- 데이터 조회 시작 -----------');
       console.log(`조회 기간: ${currentStartDate || '전체'} ~ ${currentEndDate || '전체'}`);
       if (doctor) console.log(`진단원장: ${doctor}`);
+      if (referralSource) console.log(`내원경로: ${referralSource}`);
       
       // 캐시 무시 쿼리 매개변수
       const nocache = getNoCacheQuery();
@@ -204,7 +221,8 @@ const ConsultationDashboard: React.FC = () => {
         startDate: currentStartDate || 'none',
         endDate: currentEndDate ? moment(currentEndDate).add(1, 'days').format('YYYY-MM-DD') : 'none',
         nocache: nocache, // 캐시 방지 쿼리 파라미터 추가
-        doctor: doctor // 진단원장 필터 추가
+        doctor: doctor, // 진단원장 필터 추가
+        referralSource: referralSource // 내원경로 필터 추가
       });
       
       // 콘솔에 전체 SQL 유사 쿼리 표시 (디버깅용)
@@ -253,7 +271,7 @@ const ConsultationDashboard: React.FC = () => {
         console.log('환자 정보 조회 시작');
         const { data: patientsData, error: patientsError } = await supabase
           .from('patient_questionnaire')
-          .select('resident_id, name, phone')
+          .select('resident_id, name, phone, referral_source')
           .in('resident_id', patientIds);
           
         if (patientsError) {
@@ -274,11 +292,22 @@ const ConsultationDashboard: React.FC = () => {
             return {
               ...consultation,
               patient_name: patientInfo?.name || '-',
-              patient_phone: patientInfo?.phone || '-'
+              patient_phone: patientInfo?.phone || '-',
+              referral_source: patientInfo?.referral_source || '-'
             };
           });
           
-          setConsultations(finalData);
+          // 내원경로 필터 적용
+          let finalFilteredData = finalData;
+          if (referralSource) {
+            finalFilteredData = finalData.filter(c => c.referral_source === referralSource);
+            console.log('내원경로 필터 적용:', referralSource, '결과:', finalFilteredData.length);
+          }
+          
+          setConsultations(finalFilteredData);
+          
+          // 내원경로 통계 계산
+          calculateReferralSourceStats(finalData);
         }
       } else {
         setConsultations([]);
@@ -482,7 +511,7 @@ const ConsultationDashboard: React.FC = () => {
     
     // 캐시 없이 현재 설정된 필터로 데이터 다시 가져오기
     setTimeout(() => {
-      fetchConsultations(startDate, endDate, selectedDoctor);
+      fetchConsultations(startDate, endDate, selectedDoctor, selectedReferralSource);
     }, 100);
   };
   
@@ -767,6 +796,270 @@ const ConsultationDashboard: React.FC = () => {
     setAllDoctors(stats);
   };
 
+  // 내원경로 통계 계산
+  const calculateReferralSourceStats = (data: any[]) => {
+    // 유효한 내원경로만 필터링
+    const validData = data.filter(item => item.referral_source && item.referral_source !== '-');
+    
+    // 내원경로별 카운트
+    const sourceCounts: Record<string, number> = {};
+    
+    validData.forEach(item => {
+      const source = item.referral_source;
+      if (!sourceCounts[source]) {
+        sourceCounts[source] = 0;
+      }
+      sourceCounts[source]++;
+    });
+    
+    // 배열 형태로 변환
+    const stats = Object.keys(sourceCounts).map(source => ({
+      source,
+      count: sourceCounts[source]
+    }));
+    
+    // 카운트 기준 내림차순 정렬
+    stats.sort((a, b) => b.count - a.count);
+    
+    setReferralSources(stats);
+  };
+
+  // 내원경로 변경 핸들러
+  const handleReferralSourceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedReferralSource(e.target.value);
+  };
+
+  // 필터 라벨을 생성하는 함수 추가
+  const getFilterLabel = () => {
+    const labels = [];
+    
+    // 날짜 필터 라벨
+    if (dateRange === 'custom') {
+      if (startDate && endDate) {
+        labels.push(`${startDate} ~ ${endDate}`);
+      }
+    } else {
+      const ranges: Record<DateRange, string> = {
+        today: '오늘',
+        yesterday: '어제',
+        thisWeek: '이번 주',
+        lastWeek: '지난 주',
+        thisMonth: '이번 달',
+        lastMonth: '지난 달',
+        all: '전체 기간',
+        custom: '사용자 지정'
+      };
+      labels.push(ranges[dateRange]);
+    }
+    
+    // 상담자 필터 라벨
+    if (selectedConsultant) {
+      labels.push(`상담자: ${selectedConsultant}`);
+    }
+    
+    // 진단원장 필터 라벨
+    if (selectedDoctor) {
+      labels.push(`진단원장: ${selectedDoctor}`);
+    }
+    
+    // 내원경로 필터 라벨
+    if (selectedReferralSource) {
+      labels.push(`내원경로: ${selectedReferralSource}`);
+    }
+    
+    return labels;
+  };
+
+  // 필터 태그 컴포넌트
+  const FilterTag = () => {
+    const labels = getFilterLabel();
+    
+    if (labels.length === 0) return null;
+    
+    return (
+      <div className="ml-2 inline-flex gap-1">
+        {labels.map((label, index) => (
+          <span key={index} className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded">
+            {label}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  // 마우스 다운 이벤트 핸들러
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!tableContainerRef.current) return;
+    
+    // 특정 요소에서는 드래그 동작하지 않도록 예외 처리
+    if ((e.target as HTMLElement).tagName === 'INPUT' || 
+        (e.target as HTMLElement).tagName === 'BUTTON' || 
+        (e.target as HTMLElement).tagName === 'A' || 
+        (e.target as HTMLElement).tagName === 'SELECT') {
+      return;
+    }
+    
+    setIsDragging(true);
+    setStartX(e.pageX - tableContainerRef.current.offsetLeft);
+    setStartY(e.pageY - tableContainerRef.current.offsetTop);
+    setScrollLeft(tableContainerRef.current.scrollLeft);
+    setScrollTop(tableContainerRef.current.scrollTop);
+    
+    // 텍스트 선택 방지
+    e.preventDefault();
+  };
+
+  // 마우스 이동 이벤트 핸들러
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging || !tableContainerRef.current) return;
+    
+    const x = e.pageX - tableContainerRef.current.offsetLeft;
+    const y = e.pageY - tableContainerRef.current.offsetTop;
+    
+    // 이동 거리 계산
+    const walkX = (x - startX) * 2; // 스크롤 속도 조절
+    const walkY = (y - startY) * 2;
+    
+    // 스크롤 위치 업데이트
+    tableContainerRef.current.scrollLeft = scrollLeft - walkX;
+    tableContainerRef.current.scrollTop = scrollTop - walkY;
+  };
+
+  // 마우스 업 이벤트 핸들러
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // 마우스 나가기 이벤트 핸들러
+  const handleMouseLeave = () => {
+    if (isDragging) {
+      setIsDragging(false);
+    }
+  };
+
+  // 마우스 이벤트 리스너 등록 및 제거
+  useEffect(() => {
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, startX, startY, scrollLeft, scrollTop]);
+
+  // 모든 환자의 내원경로 데이터 가져오기
+  const fetchAllPatientsReferralSources = async (currentStartDate: string, currentEndDate: string) => {
+    try {
+      console.log('신환 환자의 내원경로 데이터 가져오기 시작');
+      console.log(`조회 기간: ${currentStartDate || '전체'} ~ ${currentEndDate || '전체'}`);
+      
+      // 캐시 무시 쿼리 매개변수
+      const nocache = getNoCacheQuery();
+      
+      // 1. 먼저 patient_consultations에서 신환 환자 ID 목록 가져오기
+      let consultationsQuery = supabase
+        .from('patient_consultations')
+        .select('patient_id')
+        .eq('patient_type', '신환')
+        .order('patient_id');
+      
+      // 날짜 필터 적용
+      if (currentStartDate) {
+        consultationsQuery = consultationsQuery.gte('consultation_date', currentStartDate);
+      }
+      
+      if (currentEndDate) {
+        const nextDay = moment(currentEndDate).add(1, 'days').format('YYYY-MM-DD');
+        consultationsQuery = consultationsQuery.lt('consultation_date', nextDay);
+      }
+      
+      const { data: newPatientData, error: newPatientError } = await consultationsQuery;
+      
+      if (newPatientError) {
+        console.error('신환 환자 목록 가져오기 실패:', newPatientError);
+        return;
+      }
+      
+      // 중복 제거된 신환 환자 ID 목록
+      const newPatientIds = [...new Set(newPatientData?.map(item => item.patient_id))];
+      console.log('신환 환자 수:', newPatientIds.length);
+      
+      if (newPatientIds.length === 0) {
+        setAllPatientReferralSources([]);
+        setTotalPatientCount(0);
+        return;
+      }
+      
+      // 2. 신환 환자 ID 목록을 사용하여 patient_questionnaire에서 내원경로 데이터 가져오기
+      let query = supabase
+        .from('patient_questionnaire')
+        .select('referral_source', { count: 'exact' })
+        .in('resident_id', newPatientIds);
+      
+      // 쿼리 실행
+      const { data: patientsData, error: patientsError, count } = await query;
+      
+      if (patientsError) {
+        console.error('환자 내원경로 데이터 가져오기 실패:', patientsError);
+        return;
+      }
+      
+      console.log('가져온 신환 환자 데이터:', patientsData?.length, '건');
+      setTotalPatientCount(count || 0);
+      
+      // 내원경로별 통계 계산
+      if (patientsData && patientsData.length > 0) {
+        const validData = patientsData.filter(item => item.referral_source && item.referral_source !== '-');
+        const sourceCounts: Record<string, number> = {};
+        
+        validData.forEach(item => {
+          const source = item.referral_source;
+          if (!sourceCounts[source]) {
+            sourceCounts[source] = 0;
+          }
+          sourceCounts[source]++;
+        });
+        
+        // 배열 형태로 변환
+        const stats = Object.keys(sourceCounts).map(source => ({
+          source,
+          count: sourceCounts[source]
+        }));
+        
+        // 카운트 기준 내림차순 정렬
+        stats.sort((a, b) => b.count - a.count);
+        
+        setAllPatientReferralSources(stats);
+      } else {
+        setAllPatientReferralSources([]);
+      }
+    } catch (error) {
+      console.error('환자 내원경로 데이터 가져오기 실패:', error);
+    }
+  };
+
+  // 날짜 범위에 따른 기간명 표시
+  const getPeriodName = () => {
+    if (dateRange === 'all') {
+      return '전체 기간';
+    } else if (dateRange === 'custom') {
+      return `${formatDate(startDate)} ~ ${formatDate(endDate)}`;
+    } else {
+      const ranges: Record<DateRange, string> = {
+        today: '오늘',
+        yesterday: '어제',
+        thisWeek: '이번 주',
+        lastWeek: '지난 주',
+        thisMonth: '이번 달',
+        lastMonth: '지난 달',
+        all: '전체 기간',
+        custom: '사용자 지정'
+      };
+      return ranges[dateRange];
+    }
+  };
+
   if (loading) {
     return <div className="p-8 text-center">데이터를 불러오는 중...</div>;
   }
@@ -802,51 +1095,66 @@ const ConsultationDashboard: React.FC = () => {
 
       {/* 필터 섹션 */}
       <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">상담자 선택</label>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center">
+            <label className="text-sm font-medium whitespace-nowrap mr-2">상담자:</label>
             <select
               value={selectedConsultant}
               onChange={handleConsultantChange}
-              className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+              className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
             >
               <option value="">전체 상담자</option>
               {consultantStats.map(stat => (
                 <option key={stat.consultant} value={stat.consultant}>
-                  {stat.consultant} ({stat.totalConsultations}건)
+                  {stat.consultant}
                 </option>
               ))}
             </select>
           </div>
           
-          {/* 진단원장 선택 필터 추가 */}
-          <div>
-            <label className="block text-sm font-medium mb-1">진단원장 선택</label>
+          <div className="flex items-center">
+            <label className="text-sm font-medium whitespace-nowrap mr-2">진단원장:</label>
             <select
               value={selectedDoctor}
               onChange={handleDoctorChange}
-              className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+              className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
             >
               <option value="">전체 진단원장</option>
               {allDoctors.length > 0 ? allDoctors.map(stat => (
                 <option key={stat.doctor} value={stat.doctor}>
-                  {stat.doctor} ({stat.count}건)
+                  {stat.doctor}
                 </option>
               )) :
               doctorStats.map(stat => (
                 <option key={stat.doctor} value={stat.doctor}>
-                  {stat.doctor} ({stat.count}건)
+                  {stat.doctor}
                 </option>
               ))}
             </select>
           </div>
           
-          <div>
-            <label className="block text-sm font-medium mb-1">기간 선택</label>
+          <div className="flex items-center">
+            <label className="text-sm font-medium whitespace-nowrap mr-2">내원경로:</label>
+            <select
+              value={selectedReferralSource}
+              onChange={handleReferralSourceChange}
+              className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
+            >
+              <option value="">전체 내원경로</option>
+              {referralSources.map(item => (
+                <option key={item.source} value={item.source}>
+                  {item.source}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="flex items-center">
+            <label className="text-sm font-medium whitespace-nowrap mr-2">기간:</label>
             <select
               value={dateRange}
               onChange={handleDateRangeChange}
-              className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+              className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-32"
             >
               <option value="all">전체 기간</option>
               <option value="today">오늘</option>
@@ -860,59 +1168,53 @@ const ConsultationDashboard: React.FC = () => {
           </div>
           
           {dateRange === 'custom' && (
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-sm font-medium mb-1">시작일</label>
-                <input
-                  type="date"
-                  name="startDate"
-                  value={startDate}
-                  onChange={handleCustomDateChange}
-                  className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">종료일</label>
-                <input
-                  type="date"
-                  name="endDate"
-                  value={endDate}
-                  onChange={handleCustomDateChange}
-                  className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-                />
-              </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                name="startDate"
+                value={startDate}
+                onChange={handleCustomDateChange}
+                className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
+              />
+              <span className="text-sm">~</span>
+              <input
+                type="date"
+                name="endDate"
+                value={endDate}
+                onChange={handleCustomDateChange}
+                className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
+              />
             </div>
           )}
           
-          <div className="md:col-span-3">
-            <div className="flex items-center gap-2">
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                {getDateRangeDisplay()} 데이터 기준
-                {filteredDataCount > 0 && (
-                  <span className="ml-2 text-indigo-600 dark:text-indigo-400">
-                    (필터링됨: {filteredDataCount}/{totalDataCount}건)
-                  </span>
-                )}
-              </p>
-              <button
-                onClick={handleResetFilter}
-                className="px-4 py-2 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700 transition-colors ml-2 flex items-center gap-2"
-                title="기간 필터 적용"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                </svg>
-                <span>기간 필터 적용</span>
-              </button>
-              {/* 개발용 테스트 버튼 제거 */}
-            </div>
-          </div>
+          <button
+            onClick={handleResetFilter}
+            className="p-2 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700 transition-colors flex items-center gap-1 ml-auto"
+            title="기간 필터 적용"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+            </svg>
+            <span>필터 적용</span>
+          </button>
+        </div>
+
+        <div className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+          {getDateRangeDisplay()} 데이터 기준
+          {filteredDataCount > 0 && (
+            <span className="ml-2 text-indigo-600 dark:text-indigo-400">
+              (필터링됨: {filteredDataCount}/{totalDataCount}건)
+            </span>
+          )}
         </div>
       </div>
 
       {/* 전체 통계 요약 */}
       <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
-        <h2 className="text-xl font-semibold mb-4">전체 통계 요약</h2>
+        <div className="flex items-center mb-4">
+          <h2 className="text-xl font-semibold">전체 통계 요약</h2>
+          <FilterTag />
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-lg">
             <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300">전체 상담</h3>
@@ -958,7 +1260,10 @@ const ConsultationDashboard: React.FC = () => {
 
       {/* 상담자별 통계 */}
       <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
-        <h2 className="text-xl font-semibold mb-4">상담자별 통계</h2>
+        <div className="flex items-center mb-4">
+          <h2 className="text-xl font-semibold">상담자별 통계</h2>
+          <FilterTag />
+        </div>
         
         <div className="overflow-x-auto">
           <table className="min-w-full border border-gray-300 dark:border-gray-700">
@@ -1003,7 +1308,10 @@ const ConsultationDashboard: React.FC = () => {
       {/* 상담 결과별 분석 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">상담 결과 분포</h2>
+          <div className="flex items-center mb-4">
+            <h2 className="text-xl font-semibold">상담 결과 분포</h2>
+            <FilterTag />
+          </div>
           <div className="space-y-3">
             {['전체동의', '부분동의', '비동의', '보류', '환불'].map(result => {
               const count = consultations.filter(c => c.consultation_result === result).length;
@@ -1050,7 +1358,10 @@ const ConsultationDashboard: React.FC = () => {
         </div>
 
         <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">신환/구환 비율</h2>
+          <div className="flex items-center mb-4">
+            <h2 className="text-xl font-semibold">신환/구환 비율</h2>
+            <FilterTag />
+          </div>
           <div className="space-y-3">
             {['신환', '구환'].map(patientType => {
               const count = consultations.filter(c => c.patient_type === patientType).length;
@@ -1078,7 +1389,10 @@ const ConsultationDashboard: React.FC = () => {
           </div>
           
           <div className="mt-8">
-            <h3 className="text-lg font-medium mb-3">진단원장별 상담 건수</h3>
+            <div className="flex items-center mb-3">
+              <h3 className="text-lg font-medium">진단원장별 상담 건수</h3>
+              <FilterTag />
+            </div>
             <div className="space-y-3">
               {[...new Set(consultations.map(c => c.doctor))]
                 .filter(Boolean)
@@ -1108,13 +1422,238 @@ const ConsultationDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 미동의/부분동의 환자 관리 */}
+      {/* 내원경로 분석 그래프 추가 */}
       <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
-        <h2 className="text-xl font-semibold mb-4">미동의/부분동의 환자 관리</h2>
-        <div className="overflow-x-auto">
+        <div className="flex items-center mb-4">
+          <h2 className="text-xl font-semibold">내원경로 분석</h2>
+          <FilterTag />
+        </div>
+        
+        {referralSources.length > 0 || allPatientReferralSources.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 모든 환자 내원경로 파이 차트 */}
+            <div className="h-96">
+              <Pie
+                data={{
+                  labels: allPatientReferralSources.slice(0, 8).map(item => item.source),
+                  datasets: [
+                    {
+                      data: allPatientReferralSources.slice(0, 8).map(item => item.count),
+                      backgroundColor: [
+                        'rgba(255, 99, 132, 0.7)',
+                        'rgba(54, 162, 235, 0.7)',
+                        'rgba(255, 206, 86, 0.7)',
+                        'rgba(75, 192, 192, 0.7)',
+                        'rgba(153, 102, 255, 0.7)',
+                        'rgba(255, 159, 64, 0.7)',
+                        'rgba(201, 203, 207, 0.7)',
+                        'rgba(100, 120, 140, 0.7)'
+                      ],
+                      borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(201, 203, 207, 1)',
+                        'rgba(100, 120, 140, 1)'
+                      ],
+                      borderWidth: 1,
+                      datalabels: {
+                        color: 'white',
+                        font: {
+                          weight: 'bold'
+                        },
+                        formatter: (value: number, context: any) => {
+                          const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                          const percentage = Math.round((value / total) * 100);
+                          return percentage > 4 ? `${percentage}%` : '';
+                        }
+                      }
+                    }
+                  ]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      position: 'right',
+                      labels: {
+                        font: {
+                          size: 12
+                        }
+                      }
+                    },
+                    title: {
+                      display: true,
+                      text: `신환내원경로분포(${getPeriodName()}, ${totalPatientCount}명)`,
+                      font: {
+                        size: 16
+                      }
+                    },
+                    tooltip: {
+                      callbacks: {
+                        // @ts-ignore
+                        label: function(context) {
+                          const label = context.label;
+                          const value = context.raw as number;
+                          const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                          const percentage = Math.round((value / total) * 100);
+                          return `${label}: ${value}명 (${percentage}%)`;
+                        }
+                      }
+                    }
+                  }
+                }}
+              />
+            </div>
+            
+            {/* 상담 환자 내원경로 파이 차트 */}
+            <div className="h-96">
+              <Pie
+                data={{
+                  labels: referralSources.slice(0, 8).map(item => item.source),
+                  datasets: [
+                    {
+                      data: referralSources.slice(0, 8).map(item => item.count),
+                      backgroundColor: [
+                        'rgba(255, 99, 132, 0.7)',
+                        'rgba(54, 162, 235, 0.7)',
+                        'rgba(255, 206, 86, 0.7)',
+                        'rgba(75, 192, 192, 0.7)',
+                        'rgba(153, 102, 255, 0.7)',
+                        'rgba(255, 159, 64, 0.7)',
+                        'rgba(201, 203, 207, 0.7)',
+                        'rgba(100, 120, 140, 0.7)'
+                      ],
+                      borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(201, 203, 207, 1)',
+                        'rgba(100, 120, 140, 1)'
+                      ],
+                      borderWidth: 1,
+                      datalabels: {
+                        color: 'white',
+                        font: {
+                          weight: 'bold'
+                        },
+                        formatter: (value: number, context: any) => {
+                          const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                          const percentage = Math.round((value / total) * 100);
+                          return percentage > 4 ? `${percentage}%` : '';
+                        }
+                      }
+                    }
+                  ]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      position: 'right',
+                      labels: {
+                        font: {
+                          size: 12
+                        }
+                      }
+                    },
+                    title: {
+                      display: true,
+                      text: `상담환자 내원경로 분포(${getPeriodName()}, ${consultations.length}명)`,
+                      font: {
+                        size: 16
+                      }
+                    },
+                    tooltip: {
+                      callbacks: {
+                        // @ts-ignore
+                        label: function(context) {
+                          const label = context.label;
+                          const value = context.raw as number;
+                          const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                          const percentage = Math.round((value / total) * 100);
+                          return `${label}: ${value}명 (${percentage}%)`;
+                        }
+                      }
+                    }
+                  }
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+            내원경로 데이터가 없습니다.
+          </div>
+        )}
+        
+        {/* 내원경로 테이블 */}
+        <div className="mt-8 overflow-x-auto">
           <table className="min-w-full border border-gray-300 dark:border-gray-700">
             <thead>
               <tr className="bg-gray-100 dark:bg-gray-800">
+                <th className="p-2 border border-gray-300 dark:border-gray-700">내원경로</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">환자 수</th>
+                <th className="p-2 border border-gray-300 dark:border-gray-700">비율</th>
+              </tr>
+            </thead>
+            <tbody>
+              {referralSources.map((item) => {
+                const percentage = consultations.length > 0
+                  ? (item.count / consultations.filter(c => c.referral_source && c.referral_source !== '-').length) * 100
+                  : 0;
+                  
+                return (
+                  <tr key={item.source} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="p-2 border border-gray-300 dark:border-gray-700">{item.source}</td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700 text-center">{item.count}</td>
+                    <td className="p-2 border border-gray-300 dark:border-gray-700 text-center">{percentage.toFixed(1)}%</td>
+                  </tr>
+                );
+              })}
+              
+              {/* 합계 행 */}
+              <tr className="bg-gray-200 dark:bg-gray-700 font-bold">
+                <td className="p-2 border border-gray-300 dark:border-gray-700">합계</td>
+                <td className="p-2 border border-gray-300 dark:border-gray-700 text-center">
+                  {referralSources.reduce((sum, item) => sum + item.count, 0)}
+                </td>
+                <td className="p-2 border border-gray-300 dark:border-gray-700 text-center">100%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 미동의/부분동의 환자 관리 */}
+      <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
+        <div className="flex items-center mb-4">
+          <h2 className="text-xl font-semibold">미동의/부분동의 환자 관리</h2>
+          <FilterTag />
+        </div>
+        <div 
+          ref={tableContainerRef}
+          className="overflow-x-auto" 
+          style={{ 
+            maxHeight: '600px', 
+            overflowY: 'auto',
+            cursor: 'grab'
+          }}
+          onMouseDown={handleMouseDown}
+          onMouseLeave={handleMouseLeave}
+        >
+          <table className="min-w-full border border-gray-300 dark:border-gray-700">
+            <thead>
+              <tr className="bg-gray-100 dark:bg-gray-800">
+                <th className="p-2 border border-gray-300 dark:border-gray-700">상세</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">상담일자</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">환자ID</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">환자이름</th>
@@ -1126,16 +1665,22 @@ const ConsultationDashboard: React.FC = () => {
                 <th className="p-2 border border-gray-300 dark:border-gray-700">상담금액</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">비동의금액</th>
                 <th className="p-2 border border-gray-300 dark:border-gray-700">비동의 사유</th>
-                <th className="p-2 border border-gray-300 dark:border-gray-700">상세보기</th>
               </tr>
             </thead>
             <tbody>
               {consultations
                 .filter(c => c.consultation_result === '비동의' || c.consultation_result === '부분동의')
                 .filter(c => !selectedConsultant || c.consultant === selectedConsultant)
-                .slice(0, 10)  // 최근 10건만 표시
                 .map((consultation) => (
                 <tr key={consultation.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td className="p-2 border border-gray-300 dark:border-gray-700">
+                    <button
+                      onClick={() => navigate(`/consultation/${consultation.patient_id}?consultationId=${consultation.id}`)}
+                      className="bg-blue-500 hover:bg-blue-600 text-white text-sm py-1 px-2 rounded"
+                    >
+                      상세
+                    </button>
+                  </td>
                   <td className="p-2 border border-gray-300 dark:border-gray-700">
                     {consultation.consultation_date
                       ? new Date(consultation.consultation_date).toLocaleDateString()
@@ -1178,14 +1723,6 @@ const ConsultationDashboard: React.FC = () => {
                   </td>
                   <td className="p-2 border border-gray-300 dark:border-gray-700 max-w-xs truncate">
                     {consultation.non_consent_reason || '-'}
-                  </td>
-                  <td className="p-2 border border-gray-300 dark:border-gray-700">
-                    <button
-                      onClick={() => navigate(`/consultation/${consultation.patient_id}?consultationId=${consultation.id}`)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white text-sm py-1 px-2 rounded"
-                    >
-                      상세보기
-                    </button>
                   </td>
                 </tr>
               ))}
