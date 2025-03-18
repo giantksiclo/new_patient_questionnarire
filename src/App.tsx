@@ -2627,7 +2627,18 @@ function PatientQuestionnaireTable() {
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">주민등록번호</dt>
-                  <dd className="mt-1">{selectedPatient.resident_id || '-'}</dd>
+                  {isEditMode ? (
+                    <input
+                      type="text"
+                      value={editedPatient?.resident_id || ''}
+                      onChange={(e) => handlePatientInfoChange('resident_id', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                      placeholder="000000-0000000"
+                      maxLength={14}
+                    />
+                  ) : (
+                    <dd className="mt-1">{selectedPatient.resident_id || '-'}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
@@ -2699,12 +2710,61 @@ function PatientQuestionnaireTable() {
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">내원경로</dt>
-                  <dd className="mt-1">{selectedPatient.referral_source || '-'}</dd>
+                  {isEditMode ? (
+                    <select
+                      value={editedPatient?.referral_source || ''}
+                      onChange={(e) => handlePatientInfoChange('referral_source', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    >
+                      <option value="">내원경로 선택</option>
+                      <option value="인터넷 검색">인터넷 검색</option>
+                      <option value="SNS">SNS</option>
+                      <option value="지인 소개">지인 소개</option>
+                      <option value="가까운 위치">가까운 위치</option>
+                      <option value="간판/현수막">간판/현수막</option>
+                      <option value="광고">광고</option>
+                      <option value="기타">기타</option>
+                    </select>
+                  ) : (
+                    <dd className="mt-1">{selectedPatient.referral_source || '-'}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg col-span-2">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">소개자 정보</dt>
-                  <dd className="mt-1">{renderReferrerInfo(selectedPatient, 0, true)}</dd>
+                  {isEditMode ? (
+                    <div className="flex flex-col gap-2 mt-1">
+                      <div>
+                        <label className="block text-sm">이름</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.referrer_name || ''}
+                          onChange={(e) => handlePatientInfoChange('referrer_name', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">연락처</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.referrer_phone || ''}
+                          onChange={(e) => handlePatientInfoChange('referrer_phone', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">생년</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.referrer_birth_year || ''}
+                          onChange={(e) => handlePatientInfoChange('referrer_birth_year', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <dd className="mt-1">{renderReferrerInfo(selectedPatient, 0, true)}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg col-span-2">

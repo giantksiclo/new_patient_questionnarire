@@ -954,9 +954,6 @@ const ConsultationDashboard: React.FC = () => {
       console.log('신환 환자의 내원경로 데이터 가져오기 시작');
       console.log(`조회 기간: ${currentStartDate || '전체'} ~ ${currentEndDate || '전체'}`);
       
-      // 캐시 무시 쿼리 매개변수
-      const nocache = getNoCacheQuery();
-      
       // 1. 먼저 patient_consultations에서 신환 환자 ID 목록 가져오기
       let consultationsQuery = supabase
         .from('patient_consultations')
