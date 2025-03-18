@@ -259,13 +259,13 @@ function PatientQuestionnaireTable() {
 
   // 환자정보 저장 함수
   const savePatientInfo = async () => {
-    if (!editedPatient || !editedPatient.id) return;
+    if (!editedPatient || !editedPatient.resident_id) return;
     
     try {
       const { error } = await supabase
         .from('patient_questionnaire')
         .update(editedPatient)
-        .eq('id', editedPatient.id);
+        .eq('resident_id', editedPatient.resident_id);
       
       if (error) {
         console.error('환자정보 업데이트 오류:', error);
