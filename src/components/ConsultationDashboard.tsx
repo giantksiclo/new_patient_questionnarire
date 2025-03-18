@@ -287,7 +287,7 @@ const ConsultationDashboard: React.FC = () => {
       }
       
       // 결과 할당 및 상태 업데이트
-      setConsultations(consultationsData || []);
+      // setConsultations(consultationsData || []); // 이 부분 제거: 중복 호출 + 원본 데이터 사용 문제
       
       // 진단원장 통계 계산
       if (consultationsData && consultationsData.length > 0) {

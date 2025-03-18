@@ -8,6 +8,7 @@ import { createHashRouter, RouterProvider, Navigate, Route, createRoutesFromElem
 import PatientConsultation from './components/PatientConsultation';
 import ConsultationDashboard from './components/ConsultationDashboard';
 import React, { useRef } from 'react';
+import moment from 'moment-timezone';
 
 // Modal 컴포넌트 직접 정의
 interface ModalProps {
@@ -200,17 +201,73 @@ function PatientQuestionnaireTable() {
   const [scrollLeft, setScrollLeft] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
 
-  // 전체보기 모달 관련 상태
+  // 환자정보 상세보기 모달 관련 상태
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientQuestionnaire | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editedPatient, setEditedPatient] = useState<PatientQuestionnaire | null>(null);
+  
+  // 환자 삭제 관련 상태
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   
   // useState 부분에 statusFilter 상태 변수 추가
   const [statusFilter, setStatusFilter] = useState<string>('');
 
-  // 환자 정보 전체보기 함수
+  // 환자정보 상세보기 함수
   const openDetailModal = (patient: PatientQuestionnaire) => {
     setSelectedPatient(patient);
+    setEditedPatient({...patient});
+    setIsEditMode(false);
     setIsDetailModalOpen(true);
+  };
+
+  // 환자정보 수정 모드 전환
+  const toggleEditMode = () => {
+    setIsEditMode(!isEditMode);
+    // 편집 모드 취소 시 원래 데이터로 복원
+    if (isEditMode && selectedPatient) {
+      setEditedPatient({...selectedPatient});
+    }
+  };
+
+  // 환자정보 입력값 변경 핸들러
+  const handlePatientInfoChange = (field: keyof PatientQuestionnaire, value: any) => {
+    if (editedPatient) {
+      setEditedPatient({
+        ...editedPatient,
+        [field]: value
+      });
+    }
+  };
+
+  // 환자정보 저장 함수
+  const savePatientInfo = async () => {
+    if (!editedPatient || !editedPatient.id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('patient_questionnaire')
+        .update(editedPatient)
+        .eq('id', editedPatient.id);
+      
+      if (error) {
+        console.error('환자정보 업데이트 오류:', error);
+        alert(`환자정보 저장 중 오류가 발생했습니다: ${error.message}`);
+        return;
+      }
+      
+      // 수정된 정보로 선택된 환자정보 업데이트
+      setSelectedPatient({...editedPatient});
+      setIsEditMode(false);
+      
+      // 환자 목록 갱신
+      fetchQuestionnaires(true);
+      
+      alert('환자정보가 성공적으로 저장되었습니다.');
+    } catch (err) {
+      console.error('환자정보 저장 중 예외 발생:', err);
+      alert('환자정보 저장 중 오류가 발생했습니다.');
+    }
   };
 
   // 마우스 다운 이벤트 핸들러
@@ -612,9 +669,12 @@ function PatientQuestionnaireTable() {
       console.log('테스트 데이터 추가 시도 중...');
       
       // 테스트 데이터 - 필수 필드만 포함
+      const koreanTime = moment().tz('Asia/Seoul').format('YYYY-MM-DDTHH:mm:ss.SSSZ'); // 한국 시간 ISO 포맷으로 지정
+      console.log('한국 시간으로 설정된 시간:', koreanTime);
+      
       const testData = {
         name: testInputData.name || `테스트 ${Math.floor(Math.random() * 1000)}`,
-        created_at: new Date().toISOString(),
+        created_at: koreanTime,
         at_clinic: true,
         consent: true,
         resident_id: testInputData.resident_id || `T${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`,
@@ -646,7 +706,7 @@ function PatientQuestionnaireTable() {
         smoking_amount: '',
         dental_fears: '',
         additional_info: '',
-        submitted_at: new Date().toISOString()
+        submitted_at: koreanTime
       };
 
       console.log('추가할 데이터:', testData);
@@ -658,7 +718,12 @@ function PatientQuestionnaireTable() {
 
       console.log('Supabase 응답 상태 코드:', status);
       console.log('Supabase 응답:', { data, error });
-
+      
+      if (data && data.length > 0) {
+        console.log('저장된 데이터의 submitted_at:', data[0].submitted_at);
+        console.log('저장된 데이터의 created_at:', data[0].created_at);
+      }
+      
       if (error) {
         console.error('Supabase 오류 상세:', {
           message: error.message,
@@ -926,17 +991,23 @@ function PatientQuestionnaireTable() {
     // 모달에서는 항상 전체 내용 표시
     if (isModal) {
       return (
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-1">
           {areas.map((area, i) => (
-            <span key={i}>{area}{i < areas.length - 1 ? ',' : ''}</span>
+            <span key={i}>{area}</span>
           ))}
         </div>
       );
     }
     
-    // 2개 이하일 경우 그대로 표시
+    // 2개 이하일 경우 줄바꿈하여 표시
     if (areas.length <= 2) {
-      return areas.join(', ');
+      return (
+        <div className="flex flex-col gap-1">
+          {areas.map((area, i) => (
+            <span key={i}>{area}</span>
+          ))}
+        </div>
+      );
     }
     
     const isExpanded = expandedTreatmentAreas[`treatment-${index}`] || false;
@@ -955,9 +1026,9 @@ function PatientQuestionnaireTable() {
           }}
           title="접기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             {areas.map((area, i) => (
-              <span key={i}>{area}{i < areas.length - 1 ? ',' : ''}</span>
+              <span key={i}>{area}</span>
             ))}
             <span className="text-blue-500 mt-1">▲ 접기</span>
           </div>
@@ -977,7 +1048,7 @@ function PatientQuestionnaireTable() {
           }}
           title="펼쳐서 모든 불편부위 보기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             <span>{areas[0]}</span>
             <span>{areas[1]}{areas.length > 2 ? ` 외 ${areas.length - 2}개 `:''}
               <span className="text-blue-500 text-sm">▼</span>
@@ -1079,46 +1150,31 @@ function PatientQuestionnaireTable() {
     }
   };
 
-  // 날짜 시간 표시 함수 - 변환 없이 원본 그대로 표시
+  // 날짜 시간 표시 함수 - ISO 타임스탬프를 한국 시간으로 변환하여 표시
   const renderDateTime = (dateTimeString: string | null | undefined) => {
     if (!dateTimeString) return '-';
     
-    // ISO 형식 타임스탬프에서 날짜와 시간 부분만 추출
-    const parts = dateTimeString.split('T');
-    if (parts.length === 2) {
-      // YYYY-MM-DD 형식의 날짜
-      const datePart = parts[0].replace(/-/g, '/');
+    try {
+      // moment를 사용하여 타임스탬프를 한국 시간대로 변환
+      const koreaTime = moment(dateTimeString).tz('Asia/Seoul');
       
-      // 시간 부분 (초까지만)
-      const timePart = parts[1].substring(0, 8);
+      // 날짜 형식: YYYY/MM/DD
+      const datePart = koreaTime.format('YYYY/MM/DD');
       
-      return (
-        <div className="flex flex-col">
-          <span>{datePart}</span>
-          <span>{timePart}</span>
-        </div>
-      );
-    }
-    
-    // ISO 형식이 아닌 경우 원본 문자열 그대로 표시
-    // "2025-03-12 20:03:57+00" 와 같은 형식
-    const spaceParts = dateTimeString.split(' ');
-    if (spaceParts.length >= 2) {
-      const datePart = spaceParts[0].replace(/-/g, '/');
-      
-      // 시간 부분에서 타임존 정보(+00 등) 제거
-      const timePart = spaceParts[1].substring(0, 8);
+      // 시간 형식: HH:mm:ss
+      const timePart = koreaTime.format('HH:mm:ss');
       
       return (
         <div className="flex flex-col">
           <span>{datePart}</span>
-          <span>{timePart}</span>
+          <span>{timePart} (KST)</span>
         </div>
       );
+    } catch (error) {
+      console.error('날짜 변환 오류:', error);
+      // 오류 발생 시 원본 문자열 반환
+      return dateTimeString;
     }
-    
-    // 그 외의 형식은 그대로 표시
-    return dateTimeString;
   };
 
   // 주민번호로 성별 판정 함수
@@ -1353,6 +1409,7 @@ function PatientQuestionnaireTable() {
       
       // 날짜 필터링
       let passDateFilter = true;
+      
       
       // 시작 날짜 또는 종료 날짜가 설정된 경우에만 필터링 적용
       if (startDate || endDate) {
@@ -1644,7 +1701,7 @@ function PatientQuestionnaireTable() {
           }}
           title="펼쳐서 모든 정보 보기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             <span>{summary}</span>
             {(medications !== '-' || conditions !== '-' || allergies !== '-' || item.other_medication || item.other_condition || item.other_allergy) && 
               <span className="text-sm text-gray-500">더보기 <span className="text-blue-500 text-sm">▼</span></span>
@@ -1694,7 +1751,7 @@ function PatientQuestionnaireTable() {
           }}
           title="접기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             {pregnancyStatus !== '-' && <div><strong>임신여부:</strong> {pregnancyStatus}</div>}
             {pregnancyWeek && <div><strong>임신주수:</strong> {pregnancyWeek}주</div>}
             {smokingStatus !== '-' && <div><strong>흡연여부:</strong> {smokingStatus}</div>}
@@ -1730,7 +1787,7 @@ function PatientQuestionnaireTable() {
           }}
           title="펼쳐서 모든 정보 보기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             <span>{summary}</span>
             {(pregnancyStatus !== '-' || pregnancyWeek || smokingStatus !== '-' || smokingAmount !== '-') && 
               <span className="text-sm text-gray-500">더보기 <span className="text-blue-500 text-sm">▼</span></span>
@@ -1778,7 +1835,7 @@ function PatientQuestionnaireTable() {
           }}
           title="접기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             {contactName !== '-' && <div><strong>이름:</strong> {contactName}</div>}
             {contactRelation !== '-' && <div><strong>관계:</strong> {contactRelation}</div>}
             {contactPhone !== '-' && <div><strong>연락처:</strong> {contactPhone}</div>}
@@ -1802,7 +1859,7 @@ function PatientQuestionnaireTable() {
           }}
           title="펼쳐서 모든 정보 보기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             <span>{summary}</span>
             <span className="text-sm text-gray-500">더보기 <span className="text-blue-500 text-sm">▼</span></span>
           </div>
@@ -1848,7 +1905,7 @@ function PatientQuestionnaireTable() {
           }}
           title="접기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             <div><strong>가입여부:</strong> {hasInsurance}</div>
             {period !== '-' && <div><strong>보험기간:</strong> {period}</div>}
             {company !== '-' && <div><strong>보험회사:</strong> {company}</div>}
@@ -1885,7 +1942,7 @@ function PatientQuestionnaireTable() {
           }}
           title="펼쳐서 모든 정보 보기"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             <span>{summary}</span>
             {hasInsurance === '예' && (company !== '-' || period !== '-') && 
               <span className="text-sm text-gray-500">더보기 <span className="text-blue-500 text-sm">▼</span></span>
@@ -1893,6 +1950,57 @@ function PatientQuestionnaireTable() {
           </div>
         </div>
       );
+    }
+  };
+
+  // 환자 삭제 확인 모달 열기
+  const openDeleteConfirmModal = () => {
+    setIsDeleteModalOpen(true);
+  };
+
+  // 환자 삭제 확인 모달 닫기
+  const closeDeleteConfirmModal = () => {
+    setIsDeleteModalOpen(false);
+  };
+
+  // 환자 삭제 함수
+  const deletePatient = async () => {
+    if (!selectedPatient) return;
+    
+    console.log('환자 삭제 시도:', selectedPatient.resident_id);
+    
+    try {
+      // Supabase를 사용하여 데이터베이스에서 직접 삭제
+      const { error } = await supabase
+        .from('patient_questionnaire')
+        .delete()
+        .eq('resident_id', selectedPatient.resident_id);
+      
+      if (error) {
+        console.error('Supabase 삭제 오류:', error);
+        throw new Error('환자 삭제에 실패했습니다: ' + error.message);
+      }
+      
+      console.log('Supabase에서 환자 삭제 성공');
+      
+      // 환자 목록에서 삭제된 환자 제거 (UI 업데이트)
+      setQuestionnaires(prevData => prevData.filter(patient => patient.resident_id !== selectedPatient.resident_id));
+      
+      // 모달 닫기
+      setIsDeleteModalOpen(false);
+      setIsDetailModalOpen(false);
+      
+      // 알림 표시
+      setToast({
+        message: '환자가 성공적으로 삭제되었습니다.',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('환자 삭제 오류:', error);
+      setToast({
+        message: '환자 삭제 중 오류가 발생했습니다.',
+        type: 'error'
+      });
     }
   };
 
@@ -2200,7 +2308,9 @@ function PatientQuestionnaireTable() {
                   onClick={() => handleSort('name')}
                   className="sticky left-[80px] z-30 bg-white dark:bg-gray-800"
                 >
-                  이름 {sortField === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  <div className="max-w-[5em]">
+                    이름 {sortField === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </div>
                 </th>
                 
                 {/* 상담자 열 */}
@@ -2219,7 +2329,9 @@ function PatientQuestionnaireTable() {
                 </th>
                 
                 <th onClick={() => handleSort('treatment_area')}>
-                  불편부위 {sortField === 'treatment_area' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  <div className="w-32">
+                    불편부위 {sortField === 'treatment_area' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </div>
                 </th>
                 
                 <th onClick={() => handleSort('referral_source')}>
@@ -2276,19 +2388,23 @@ function PatientQuestionnaireTable() {
                           )}
                         </Link>
                         
-                        {/* 전체보기 버튼 추가 */}
+                        {/* 환자정보 버튼 추가 */}
                         <button
                           onClick={() => openDetailModal(item)}
                           className="bg-emerald-500 hover:bg-emerald-600 text-white p-1 rounded text-sm mt-1"
-                          aria-label="전체보기"
-                          title="환자 정보 전체보기"
+                          aria-label="환자정보"
+                          title="환자정보 상세보기"
                         >
-                          전체보기
+                          환자정보
                         </button>
                       </div>
                     </td>
                     <td>{renderDateTime(item.submitted_at)}</td>
-                    <td className="sticky left-[80px] z-10 bg-white dark:bg-gray-900 group-hover:bg-accent/50">{item.name || '-'}</td>
+                    <td className="sticky left-[80px] z-10 bg-white dark:bg-gray-900 group-hover:bg-accent/50">
+                      <div className="max-w-[5em] break-words whitespace-normal">
+                        {item.name || '-'}
+                      </div>
+                    </td>
                     
                     {/* 상담자 정보 표시 */}
                     <td>
@@ -2304,7 +2420,11 @@ function PatientQuestionnaireTable() {
                     <td>{renderBoolean(item.at_clinic)}</td>
                     <td>{item.resident_id || '-'}</td>
                     <td>{item.visit_reason || '-'}</td>
-                    <td>{renderTreatmentArea(item.treatment_area, index)}</td>
+                    <td className="py-2">
+                      <div className="w-32 leading-snug">
+                        {renderTreatmentArea(item.treatment_area, index)}
+                      </div>
+                    </td>
                     <td>{item.referral_source || '-'}</td>
                     <td>{item.phone || '-'}</td>
                   </tr>
@@ -2425,19 +2545,67 @@ function PatientQuestionnaireTable() {
         </div>
       </Modal>
       
-      {/* 환자 정보 전체보기 모달 */}
+      {/* 환자정보 상세보기 모달 */}
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)}>
         {selectedPatient && (
           <div className="h-full flex flex-col">
             <div className="flex justify-between items-center p-6 border-b">
-              <h2 className="text-xl font-bold">환자 정보 전체보기</h2>
+              <h2 className="text-xl font-bold">환자정보 상세보기</h2>
+              <div className="flex gap-2">
+                {isEditMode ? (
+                  <>
+                    <button
+                      onClick={savePatientInfo}
+                      className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded"
+                    >
+                      저장
+                    </button>
+                    <button
+                      onClick={toggleEditMode}
+                      className="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded"
+                    >
+                      취소
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={openDeleteConfirmModal}
+                      className="px-4 py-2 mr-2 bg-red-500 hover:bg-red-600 text-white rounded"
+                    >
+                      환자 삭제
+                    </button>
+                    <button
+                      onClick={toggleEditMode}
+                      className="px-4 py-2 mr-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
+                    >
+                      수정
+                    </button>
+                    <button
+                      onClick={() => setIsDetailModalOpen(false)}
+                      className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded"
+                    >
+                      닫기
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
             
             <div className="flex-1 p-6 overflow-auto">
               <div className="grid grid-cols-4 gap-4">
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">이름</dt>
-                  <dd className="mt-1 text-lg font-semibold">{selectedPatient.name || '-'}</dd>
+                  {isEditMode ? (
+                    <input
+                      type="text"
+                      value={editedPatient?.name || ''}
+                      onChange={(e) => handlePatientInfoChange('name', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  ) : (
+                    <dd className="mt-1 text-lg font-semibold">{selectedPatient.name || '-'}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
@@ -2452,12 +2620,31 @@ function PatientQuestionnaireTable() {
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">전화번호</dt>
-                  <dd className="mt-1">{selectedPatient.phone || '-'}</dd>
+                  {isEditMode ? (
+                    <input
+                      type="text"
+                      value={editedPatient?.phone || ''}
+                      onChange={(e) => handlePatientInfoChange('phone', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                      placeholder="010-0000-0000"
+                    />
+                  ) : (
+                    <dd className="mt-1">{selectedPatient.phone || '-'}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg col-span-2">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">주소</dt>
-                  <dd className="mt-1">{renderAddress(selectedPatient.address, 0, true)}</dd>
+                  {isEditMode ? (
+                    <input
+                      type="text"
+                      value={editedPatient?.address || ''}
+                      onChange={(e) => handlePatientInfoChange('address', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  ) : (
+                    <dd className="mt-1">{renderAddress(selectedPatient.address, 0, true)}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
@@ -2467,12 +2654,30 @@ function PatientQuestionnaireTable() {
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">내원목적</dt>
-                  <dd className="mt-1">{selectedPatient.visit_reason || '-'}</dd>
+                  {isEditMode ? (
+                    <input
+                      type="text"
+                      value={editedPatient?.visit_reason || ''}
+                      onChange={(e) => handlePatientInfoChange('visit_reason', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  ) : (
+                    <dd className="mt-1">{selectedPatient.visit_reason || '-'}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">불편부위</dt>
-                  <dd className="mt-1">{renderTreatmentArea(selectedPatient.treatment_area, 0, true)}</dd>
+                  {isEditMode ? (
+                    <input
+                      type="text"
+                      value={editedPatient?.treatment_area || ''}
+                      onChange={(e) => handlePatientInfoChange('treatment_area', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  ) : (
+                    <dd className="mt-1">{renderTreatmentArea(selectedPatient.treatment_area, 0, true)}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
@@ -2487,7 +2692,66 @@ function PatientQuestionnaireTable() {
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg col-span-2">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">의료 정보</dt>
-                  <dd className="mt-1">{renderMedicalHistory(selectedPatient, 0, true)}</dd>
+                  {isEditMode ? (
+                    <div className="flex flex-col gap-2 mt-1">
+                      <div>
+                        <label className="block text-sm">복용약물</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.medications || ''}
+                          onChange={(e) => handlePatientInfoChange('medications', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">기타 약물</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.other_medication || ''}
+                          onChange={(e) => handlePatientInfoChange('other_medication', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">질환</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.medical_conditions || ''}
+                          onChange={(e) => handlePatientInfoChange('medical_conditions', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">기타 질환</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.other_condition || ''}
+                          onChange={(e) => handlePatientInfoChange('other_condition', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">알레르기</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.allergies || ''}
+                          onChange={(e) => handlePatientInfoChange('allergies', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">기타 알레르기</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.other_allergy || ''}
+                          onChange={(e) => handlePatientInfoChange('other_allergy', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <dd className="mt-1">{renderMedicalHistory(selectedPatient, 0, true)}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
@@ -2497,17 +2761,92 @@ function PatientQuestionnaireTable() {
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">비상연락처</dt>
-                  <dd className="mt-1">{renderEmergencyContact(selectedPatient, 0, true)}</dd>
+                  {isEditMode ? (
+                    <div className="flex flex-col gap-2 mt-1">
+                      <div>
+                        <label className="block text-sm">이름</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.emergency_contact_name || ''}
+                          onChange={(e) => handlePatientInfoChange('emergency_contact_name', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">관계</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.emergency_contact_relation || ''}
+                          onChange={(e) => handlePatientInfoChange('emergency_contact_relation', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">연락처</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.emergency_contact_phone || ''}
+                          onChange={(e) => handlePatientInfoChange('emergency_contact_phone', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <dd className="mt-1">{renderEmergencyContact(selectedPatient, 0, true)}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">치아보험</dt>
-                  <dd className="mt-1">{renderInsurance(selectedPatient, 0, true)}</dd>
+                  {isEditMode ? (
+                    <div className="flex flex-col gap-2 mt-1">
+                      <div>
+                        <label className="block text-sm">보험 가입 여부</label>
+                        <select
+                          value={editedPatient?.has_private_insurance ? 'true' : 'false'}
+                          onChange={(e) => handlePatientInfoChange('has_private_insurance', e.target.value === 'true')}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        >
+                          <option value="true">예</option>
+                          <option value="false">아니오</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm">보험 기간</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.private_insurance_period || ''}
+                          onChange={(e) => handlePatientInfoChange('private_insurance_period', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm">보험 회사</label>
+                        <input
+                          type="text"
+                          value={editedPatient?.insurance_company || ''}
+                          onChange={(e) => handlePatientInfoChange('insurance_company', e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <dd className="mt-1">{renderInsurance(selectedPatient, 0, true)}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">치과공포</dt>
-                  <dd className="mt-1">{selectedPatient.dental_fears || '-'}</dd>
+                  {isEditMode ? (
+                    <input
+                      type="text"
+                      value={editedPatient?.dental_fears || ''}
+                      onChange={(e) => handlePatientInfoChange('dental_fears', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                    />
+                  ) : (
+                    <dd className="mt-1">{selectedPatient.dental_fears || '-'}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
@@ -2522,7 +2861,16 @@ function PatientQuestionnaireTable() {
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg col-span-2">
                   <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">부가정보</dt>
-                  <dd className="mt-1">{renderAdditionalInfo(selectedPatient.additional_info, 0, true)}</dd>
+                  {isEditMode ? (
+                    <textarea
+                      value={editedPatient?.additional_info || ''}
+                      onChange={(e) => handlePatientInfoChange('additional_info', e.target.value)}
+                      className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                      rows={3}
+                    />
+                  ) : (
+                    <dd className="mt-1">{renderAdditionalInfo(selectedPatient.additional_info, 0, true)}</dd>
+                  )}
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
@@ -2533,15 +2881,70 @@ function PatientQuestionnaireTable() {
             </div>
             
             <div className="p-6 border-t flex justify-end">
-              <button
-                onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
-              >
-                닫기
-              </button>
+              {isEditMode ? (
+                <>
+                  <button
+                    onClick={savePatientInfo}
+                    className="px-4 py-2 mr-2 bg-green-500 hover:bg-green-600 text-white rounded"
+                  >
+                    저장
+                  </button>
+                  <button
+                    onClick={toggleEditMode}
+                    className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded"
+                  >
+                    취소
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={openDeleteConfirmModal}
+                    className="px-4 py-2 mr-2 bg-red-500 hover:bg-red-600 text-white rounded"
+                  >
+                    환자 삭제
+                  </button>
+                  <button
+                    onClick={toggleEditMode}
+                    className="px-4 py-2 mr-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
+                  >
+                    수정
+                  </button>
+                  <button
+                    onClick={() => setIsDetailModalOpen(false)}
+                    className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded"
+                  >
+                    닫기
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* 환자 삭제 확인 모달 */}
+      <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteConfirmModal}>
+        <div className="p-6">
+          <h3 className="text-xl font-bold mb-4">환자 삭제 확인</h3>
+          <p className="mb-6">
+            정말로 이 환자를 삭제하시겠습니까? 이 작업은 돌이킬 수 없으며, 환자와 관련된 모든 기록이 삭제됩니다.
+          </p>
+          <div className="flex justify-end">
+            <button
+              onClick={closeDeleteConfirmModal}
+              className="px-4 py-2 mr-2 bg-gray-500 hover:bg-gray-600 text-white rounded"
+            >
+              취소
+            </button>
+            <button
+              onClick={deletePatient}
+              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded"
+            >
+              삭제
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

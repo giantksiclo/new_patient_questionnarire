@@ -72,7 +72,7 @@ const PatientConsultation = () => {
     doctor: '',
     consultant: '',
     treatment_details: '',
-    consultation_result: '보류',
+    consultation_result: '전체동의',
     consultation_amount: '0',
     payment_amount: '0',
     remaining_payment: '0',
@@ -100,7 +100,9 @@ const PatientConsultation = () => {
   });
 
   const [consultations, setConsultations] = useState<ConsultationRecord[]>([]);
-
+  const [treatmentFieldsExpanded, setTreatmentFieldsExpanded] = useState(false);
+  const [contactFieldsExpanded, setContactFieldsExpanded] = useState(false);
+  
   // 수정/삭제 관련 상태 추가
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingConsultation, setEditingConsultation] = useState<ConsultationRecord | null>(null);
@@ -129,6 +131,44 @@ const PatientConsultation = () => {
   const [editedNextVisitMessage, setEditedNextVisitMessage] = useState('');
   const [savingCustomMessage, setSavingCustomMessage] = useState(false);
   const [savingNextVisitMessage, setSavingNextVisitMessage] = useState(false);
+
+  const resetForm = useCallback(() => {
+    setNewConsultation({
+      patient_id: residentId || '',
+      consultation_date: new Date().toISOString().split('T')[0],
+      patient_type: '신환',
+      doctor: '',
+      consultant: '',
+      treatment_details: '',
+      consultation_result: '전체동의',
+      consultation_amount: '0',
+      payment_amount: '0',
+      remaining_payment: '0',
+      diagnosis_amount: '0',
+      non_consent_reason: '',
+      ip_count: '0',
+      ipd_count: '0',
+      ipb_count: '0',
+      bg_count: '0',
+      cr_count: '0',
+      in_count: '0',
+      r_count: '0',
+      ca_count: '0',
+      first_contact_date: null,
+      first_contact_type: '방문',
+      second_contact_date: null,
+      second_contact_type: '방문',
+      third_contact_date: null,
+      third_contact_type: '방문',
+      consultation_memo: '',
+      today_treatment: '',
+      next_treatment: '',
+      appointment_date: null,
+      appointment_time: ''
+    });
+    setTreatmentFieldsExpanded(false);
+    setContactFieldsExpanded(false);
+  }, [residentId]);
 
   // 환자 정보 가져오기
   useEffect(() => {
@@ -380,28 +420,7 @@ const PatientConsultation = () => {
         setConsultations([data, ...consultations]);
         
         // 폼 일부 초기화 - 날짜와 상담자 정보 유지
-        setNewConsultation(prev => ({
-          ...prev,
-          treatment_details: '',
-          consultation_memo: '',
-          non_consent_reason: '',
-          diagnosis_amount: '0',
-          consultation_amount: '0',
-          payment_amount: '0',
-          remaining_payment: '0',
-          ip_count: '0',
-          ipd_count: '0',
-          ipb_count: '0',
-          bg_count: '0',
-          cr_count: '0',
-          in_count: '0',
-          r_count: '0',
-          ca_count: '0',
-          today_treatment: '',
-          next_treatment: '',
-          appointment_date: null,
-          appointment_time: ''
-        }));
+        resetForm();
         
         alert('상담 기록이 저장되었습니다.');
       }
@@ -1731,6 +1750,7 @@ const PatientConsultation = () => {
                 <option value="박대웅">박대웅</option>
                 <option value="전경원">전경원</option>
                 <option value="장성진">장성진</option>
+                <option value="서지희">서지희</option>
               </select>
             </div>
 
@@ -1748,6 +1768,8 @@ const PatientConsultation = () => {
                 <option value="김은정">김은정</option>
                 <option value="임예지">임예지</option>
                 <option value="송도원">송도원</option>
+                <option value="김소정">김소정</option>
+                <option value="정두리">정두리</option>
               </select>
             </div>
 
@@ -1821,48 +1843,57 @@ const PatientConsultation = () => {
 
           {/* 치료 항목 수량 */}
           <div className="mt-4">
-            <h3 className="text-lg font-medium mb-3">치료 항목 수량</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { name: 'ip_count', label: 'IP' },
-                { name: 'ipd_count', label: 'IPD' },
-                { name: 'ipb_count', label: 'IPB' },
-                { name: 'bg_count', label: 'BG' },
-                { name: 'cr_count', label: 'CR' },
-                { name: 'in_count', label: 'IN' },
-                { name: 'r_count', label: 'R' },
-                { name: 'ca_count', label: 'CA' }
-              ].map(({ name, label }) => (
-                <div key={name} className="mb-2">
-                  <label className="block text-sm font-medium mb-1">{label}</label>
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => handleQuantityChange(name, false)}
-                      className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-l"
-                    >
-                      -
-                    </button>
-                    <input
-                      type="text"
-                      name={name}
-                      value={newConsultation[name as keyof ConsultationRecord] || '0'}
-                      onChange={handleInputChange}
-                      className="w-16 p-2 text-center border border-gray-300 text-black bg-white"
-                      readOnly
-                      title={`${label} 수량`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleQuantityChange(name, true)}
-                      className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-r"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="flex justify-between items-center mb-3 cursor-pointer" 
+                 onClick={() => setTreatmentFieldsExpanded(!treatmentFieldsExpanded)}>
+              <h3 className="text-lg font-medium">치료 항목 수량</h3>
+              <div className="text-blue-500">
+                {treatmentFieldsExpanded ? '접기 ▲' : '펼치기 ▼'}
+              </div>
             </div>
+            
+            {treatmentFieldsExpanded && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { name: 'ip_count', label: 'IP' },
+                  { name: 'ipd_count', label: 'IPD' },
+                  { name: 'ipb_count', label: 'IPB' },
+                  { name: 'bg_count', label: 'BG' },
+                  { name: 'cr_count', label: 'CR' },
+                  { name: 'in_count', label: 'IN' },
+                  { name: 'r_count', label: 'R' },
+                  { name: 'ca_count', label: 'CA' }
+                ].map(({ name, label }) => (
+                  <div key={name} className="mb-2">
+                    <label className="block text-sm font-medium mb-1">{label}</label>
+                    <div className="flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => handleQuantityChange(name, false)}
+                        className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-l"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="text"
+                        name={name}
+                        value={newConsultation[name as keyof ConsultationRecord] || '0'}
+                        onChange={handleInputChange}
+                        className="w-16 p-2 text-center border border-gray-300 text-black bg-white"
+                        readOnly
+                        title={`${label} 수량`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleQuantityChange(name, true)}
+                        className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-r"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1891,87 +1922,101 @@ const PatientConsultation = () => {
           </div>
 
           <div className="mt-4">
-            <h3 className="text-lg font-medium mb-3">연락 기록</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">1차 연락일</label>
-                <input
-                  type="date"
-                  name="first_contact_date"
-                  value={newConsultation.first_contact_date || ''}
-                  onChange={handleDateChange}
-                  className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-                  title="1차 연락일을 선택하세요"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">1차 연락방법</label>
-                <select
-                  name="first_contact_type"
-                  value={newConsultation.first_contact_type}
-                  onChange={handleInputChange}
-                  className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-                  title="1차 연락방법을 선택하세요"
-                >
-                  <option value="전화">전화</option>
-                  <option value="방문">방문</option>
-                </select>
-              </div>
-            </div>
+            <h3 className="text-lg font-medium mb-3">
+              연락 기록
+              <button
+                type="button"
+                className="ml-2 text-sm text-blue-500 hover:text-blue-700 focus:outline-none"
+                onClick={() => setContactFieldsExpanded(!contactFieldsExpanded)}
+              >
+                {contactFieldsExpanded ? '접기 ▲' : '펼치기 ▼'}
+              </button>
+            </h3>
+            
+            {contactFieldsExpanded && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">1차 연락일</label>
+                    <input
+                      type="date"
+                      name="first_contact_date"
+                      value={newConsultation.first_contact_date || ''}
+                      onChange={handleDateChange}
+                      className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                      title="1차 연락일을 선택하세요"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">1차 연락방법</label>
+                    <select
+                      name="first_contact_type"
+                      value={newConsultation.first_contact_type}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                      title="1차 연락방법을 선택하세요"
+                    >
+                      <option value="전화">전화</option>
+                      <option value="방문">방문</option>
+                    </select>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">2차 연락일</label>
-                <input
-                  type="date"
-                  name="second_contact_date"
-                  value={newConsultation.second_contact_date || ''}
-                  onChange={handleDateChange}
-                  className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-                  title="2차 연락일을 선택하세요"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">2차 연락방법</label>
-                <select
-                  name="second_contact_type"
-                  value={newConsultation.second_contact_type}
-                  onChange={handleInputChange}
-                  className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-                  title="2차 연락방법을 선택하세요"
-                >
-                  <option value="전화">전화</option>
-                  <option value="방문">방문</option>
-                </select>
-              </div>
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">2차 연락일</label>
+                    <input
+                      type="date"
+                      name="second_contact_date"
+                      value={newConsultation.second_contact_date || ''}
+                      onChange={handleDateChange}
+                      className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                      title="2차 연락일을 선택하세요"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">2차 연락방법</label>
+                    <select
+                      name="second_contact_type"
+                      value={newConsultation.second_contact_type}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                      title="2차 연락방법을 선택하세요"
+                    >
+                      <option value="전화">전화</option>
+                      <option value="방문">방문</option>
+                    </select>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">3차 연락일</label>
-                <input
-                  type="date"
-                  name="third_contact_date"
-                  value={newConsultation.third_contact_date || ''}
-                  onChange={handleDateChange}
-                  className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-                  title="3차 연락일을 선택하세요"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">3차 연락방법</label>
-                <select
-                  name="third_contact_type"
-                  value={newConsultation.third_contact_type}
-                  onChange={handleInputChange}
-                  className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
-                  title="3차 연락방법을 선택하세요"
-                >
-                  <option value="전화">전화</option>
-                  <option value="방문">방문</option>
-                </select>
-              </div>
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">3차 연락일</label>
+                    <input
+                      type="date"
+                      name="third_contact_date"
+                      value={newConsultation.third_contact_date || ''}
+                      onChange={handleDateChange}
+                      className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                      title="3차 연락일을 선택하세요"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">3차 연락방법</label>
+                    <select
+                      name="third_contact_type"
+                      value={newConsultation.third_contact_type}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+                      title="3차 연락방법을 선택하세요"
+                    >
+                      <option value="전화">전화</option>
+                      <option value="방문">방문</option>
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div>
@@ -2288,6 +2333,7 @@ const PatientConsultation = () => {
                     <option value="박대웅">박대웅</option>
                     <option value="전경원">전경원</option>
                     <option value="장성진">장성진</option>
+                    <option value="서지희">서지희</option>
                   </select>
                 </div>
 
@@ -2305,6 +2351,8 @@ const PatientConsultation = () => {
                     <option value="김은정">김은정</option>
                     <option value="임예지">임예지</option>
                     <option value="송도원">송도원</option>
+                    <option value="김소정">김소정</option>
+                    <option value="정두리">정두리</option>
                   </select>
                 </div>
 
