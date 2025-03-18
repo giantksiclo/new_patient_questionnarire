@@ -144,6 +144,12 @@ interface PatientQuestionnaire {
 const isValidResidentId = (value: string) => {
   const digits = value.replace(/-/g, '');
   if (digits.length !== 13) return false;
+  
+  // 성별 자리(7번째 자리) 검증 - 1~9, 0 모두 유효
+  const genderDigit = parseInt(digits[6], 10);
+  if (isNaN(genderDigit) || genderDigit < 0 || genderDigit > 9) return false;
+  
+  // 체크섬 검증 로직
   const multipliers = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5];
   let sum = 0;
   for (let i = 0; i < 12; i++) {
