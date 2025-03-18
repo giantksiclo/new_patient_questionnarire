@@ -2997,11 +2997,11 @@ const AutoRefresh: React.FC = () => {
       if (currentHash === '' || currentHash === '#' || currentHash === '#/') {
         console.log('메인 페이지에서 새로고침 타이머 설정');
         
-        // 1분마다 새로고침 실행
+        // 5분마다 새로고침 실행
         const refreshInterval = setInterval(() => {
-          console.log('1분이 지나 메인 페이지를 새로고침합니다.');
+          console.log('5분이 지나 메인 페이지를 새로고침합니다.');
           window.location.reload();
-        }, 60000); // 60000 밀리초 = 1분
+        }, 300000); // 300000 밀리초 = 5분
         
         // 정리 함수 반환
         return () => {

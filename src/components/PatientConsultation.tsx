@@ -2564,6 +2564,111 @@ const PatientConsultation = () => {
                 </div>
               </div>
 
+              {/* 연락 기록 요약 정보 */}
+              <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                <h4 className="font-medium text-gray-700 mb-2">연락 기록</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* 첫 번째 연락 */}
+                  <div className="border rounded p-3 bg-white">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">첫 번째 연락</span>
+                      {isEditModeEnabled ? (
+                        <select
+                          name="first_contact_type"
+                          value={editingConsultation.first_contact_type}
+                          onChange={handleEditInputChange}
+                          className="text-xs py-0.5 px-2 border border-gray-300 rounded"
+                        >
+                          <option value="방문">방문</option>
+                          <option value="전화">전화</option>
+                        </select>
+                      ) : (
+                        <span className={`text-xs px-2 py-0.5 rounded ${editingConsultation.first_contact_type === '방문' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                          {editingConsultation.first_contact_type || '-'}
+                        </span>
+                      )}
+                    </div>
+                    {isEditModeEnabled ? (
+                      <input
+                        type="date"
+                        name="first_contact_date"
+                        value={editingConsultation.first_contact_date || ''}
+                        onChange={handleEditDateChange}
+                        className="w-full text-sm p-1 border border-gray-300 rounded"
+                      />
+                    ) : (
+                      <p className="text-sm">{editingConsultation.first_contact_date ? formatDateDisplay(editingConsultation.first_contact_date) : '기록 없음'}</p>
+                    )}
+                  </div>
+                  
+                  {/* 두 번째 연락 */}
+                  <div className="border rounded p-3 bg-white">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">두 번째 연락</span>
+                      {isEditModeEnabled ? (
+                        <select
+                          name="second_contact_type"
+                          value={editingConsultation.second_contact_type}
+                          onChange={handleEditInputChange}
+                          className="text-xs py-0.5 px-2 border border-gray-300 rounded"
+                        >
+                          <option value="방문">방문</option>
+                          <option value="전화">전화</option>
+                        </select>
+                      ) : (
+                        <span className={`text-xs px-2 py-0.5 rounded ${editingConsultation.second_contact_type === '방문' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                          {editingConsultation.second_contact_type || '-'}
+                        </span>
+                      )}
+                    </div>
+                    {isEditModeEnabled ? (
+                      <input
+                        type="date"
+                        name="second_contact_date"
+                        value={editingConsultation.second_contact_date || ''}
+                        onChange={handleEditDateChange}
+                        className="w-full text-sm p-1 border border-gray-300 rounded"
+                      />
+                    ) : (
+                      <p className="text-sm">{editingConsultation.second_contact_date ? formatDateDisplay(editingConsultation.second_contact_date) : '기록 없음'}</p>
+                    )}
+                  </div>
+                  
+                  {/* 세 번째 연락 */}
+                  <div className="border rounded p-3 bg-white">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">세 번째 연락</span>
+                      {isEditModeEnabled ? (
+                        <select
+                          name="third_contact_type"
+                          value={editingConsultation.third_contact_type}
+                          onChange={handleEditInputChange}
+                          className="text-xs py-0.5 px-2 border border-gray-300 rounded"
+                        >
+                          <option value="방문">방문</option>
+                          <option value="전화">전화</option>
+                        </select>
+                      ) : (
+                        <span className={`text-xs px-2 py-0.5 rounded ${editingConsultation.third_contact_type === '방문' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                          {editingConsultation.third_contact_type || '-'}
+                        </span>
+                      )}
+                    </div>
+                    {isEditModeEnabled ? (
+                      <input
+                        type="date"
+                        name="third_contact_date"
+                        value={editingConsultation.third_contact_date || ''}
+                        onChange={handleEditDateChange}
+                        className="w-full text-sm p-1 border border-gray-300 rounded"
+                      />
+                    ) : (
+                      <p className="text-sm">{editingConsultation.third_contact_date ? formatDateDisplay(editingConsultation.third_contact_date) : '기록 없음'}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1">상담 메모</label>
                 <textarea
