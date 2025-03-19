@@ -1094,12 +1094,7 @@ const ConsultationDashboard: React.FC = () => {
           >
             최근상담목록
           </Link>
-          <button 
-            onClick={() => navigate(-1)}
-            className="p-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-sm"
-          >
-            뒤로가기
-          </button>
+          {/* 뒤로가기 버튼 제거됨 */}
         </div>
       </div>
     
