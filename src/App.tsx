@@ -7,6 +7,7 @@ import { Toast } from './components/Toast';
 import { createHashRouter, RouterProvider, Navigate, Route, createRoutesFromElements, Link } from 'react-router-dom';
 import PatientConsultation from './components/PatientConsultation';
 import ConsultationDashboard from './components/ConsultationDashboard';
+import RecentConsultations from './components/RecentConsultations';
 import React, { useRef } from 'react';
 import moment from 'moment-timezone';
 
@@ -185,10 +186,10 @@ function PatientQuestionnaireTable() {
   const [sortField, setSortField] = useState<keyof PatientQuestionnaire>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [startDateInput, setStartDateInput] = useState<string>('');
-  const [endDateInput, setEndDateInput] = useState<string>('');
+  const [startDateInput, setStartDateInput] = useState('');
+  const [endDateInput, setEndDateInput] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [expandedAddresses, setExpandedAddresses] = useState<Record<string, boolean>>({});
   const [expandedTreatmentAreas, setExpandedTreatmentAreas] = useState<Record<string, boolean>>({});
   const [expandedAdditionalInfos, setExpandedAdditionalInfos] = useState<Record<string, boolean>>({});
@@ -229,6 +230,9 @@ function PatientQuestionnaireTable() {
   
   // useState 부분에 statusFilter 상태 변수 추가
   const [statusFilter, setStatusFilter] = useState<string>('');
+
+  // 날짜 필터 선택 상태를 추적하는 변수 추가
+  const [activeDateFilter, setActiveDateFilter] = useState('');
 
   // 환자정보 상세보기 함수
   const openDetailModal = (patient: PatientQuestionnaire) => {
@@ -1245,6 +1249,7 @@ function PatientQuestionnaireTable() {
   const applyDateFilter = () => {
     setStartDate(startDateInput);
     setEndDate(endDateInput);
+    setActiveDateFilter('custom'); // 수동 날짜 선택일 경우 'custom'으로 설정
   };
 
   // 이번 달, 지난 달 설정 함수
@@ -1268,6 +1273,7 @@ function PatientQuestionnaireTable() {
     setEndDateInput(newEndDate);
     setStartDate(newStartDate);
     setEndDate(newEndDate);
+    setActiveDateFilter('current-month'); // 활성 필터 설정
   };
   
   const setPreviousMonth = () => {
@@ -1289,6 +1295,7 @@ function PatientQuestionnaireTable() {
     setEndDateInput(newEndDate);
     setStartDate(newStartDate);
     setEndDate(newEndDate);
+    setActiveDateFilter('previous-month'); // 활성 필터 설정
   };
 
   // 이번주, 지난주, 오늘, 어제 설정 함수 추가
@@ -1313,6 +1320,7 @@ function PatientQuestionnaireTable() {
     setEndDateInput(newEndDate);
     setStartDate(newStartDate);
     setEndDate(newEndDate);
+    setActiveDateFilter('current-week'); // 활성 필터 설정
   };
   
   const setPreviousWeek = () => {
@@ -1340,6 +1348,7 @@ function PatientQuestionnaireTable() {
     setEndDateInput(newEndDate);
     setStartDate(newStartDate);
     setEndDate(newEndDate);
+    setActiveDateFilter('previous-week'); // 활성 필터 설정
   };
   
   const setToday = () => {
@@ -1352,6 +1361,7 @@ function PatientQuestionnaireTable() {
     setEndDateInput(todayString);
     setStartDate(todayString);
     setEndDate(todayString);
+    setActiveDateFilter('today'); // 활성 필터 설정
   };
   
   const setYesterday = () => {
@@ -1366,6 +1376,7 @@ function PatientQuestionnaireTable() {
     setEndDateInput(yesterdayString);
     setStartDate(yesterdayString);
     setEndDate(yesterdayString);
+    setActiveDateFilter('yesterday'); // 활성 필터 설정
   };
 
   // 상담 상태 필터 함수
@@ -1987,7 +1998,20 @@ function PatientQuestionnaireTable() {
     console.log('환자 삭제 시도:', selectedPatient.resident_id);
     
     try {
-      // Supabase를 사용하여 데이터베이스에서 직접 삭제
+      // 1. 먼저 해당 환자의 상담 기록을 삭제
+      const { error: consultationError } = await supabase
+        .from('patient_consultations')
+        .delete()
+        .eq('patient_id', selectedPatient.resident_id);
+      
+      if (consultationError) {
+        console.error('상담 기록 삭제 오류:', consultationError);
+        throw new Error('환자의 상담 기록 삭제에 실패했습니다: ' + consultationError.message);
+      }
+      
+      console.log('환자 관련 상담 기록 삭제 성공');
+      
+      // 2. 환자 정보 삭제
       const { error } = await supabase
         .from('patient_questionnaire')
         .delete()
@@ -2009,7 +2033,7 @@ function PatientQuestionnaireTable() {
       
       // 알림 표시
       setToast({
-        message: '환자가 성공적으로 삭제되었습니다.',
+        message: '환자와 관련된 모든 상담 기록이 성공적으로 삭제되었습니다.',
         type: 'success'
       });
     } catch (error) {
@@ -2041,10 +2065,16 @@ function PatientQuestionnaireTable() {
             구환 데이터 추가
           </button>
           <Link 
+            to="/recent"
+            className="p-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 text-sm"
+          >
+            최근상담목록
+          </Link>
+          <Link 
             to="/dashboard"
             className="p-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm flex items-center gap-1"
           >
-            <span>대시보드</span>
+            <span>상담통계</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 3v6"/><path d="M15 3v6"/><path d="M9 15v6"/><path d="M15 15v6"/><path d="M3 9h6"/><path d="M3 15h6"/><path d="M15 9h6"/><path d="M15 15h6"/></svg>
           </Link>
           <ThemeToggle />
@@ -2117,7 +2147,10 @@ function PatientQuestionnaireTable() {
               <input
                 type="date"
                 value={startDateInput}
-                onChange={(e) => setStartDateInput(e.target.value)}
+                onChange={(e) => {
+                  setStartDateInput(e.target.value);
+                  setActiveDateFilter(''); // 날짜 직접 변경 시 활성 필터 초기화
+                }}
                 className="w-full py-2 px-3 border border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white h-[38px]"
                 max={endDateInput || undefined}
                 aria-label="시작 날짜 선택"
@@ -2125,7 +2158,10 @@ function PatientQuestionnaireTable() {
               />
               {startDateInput && (
                 <button
-                  onClick={() => setStartDateInput('')}
+                  onClick={() => {
+                    setStartDateInput('');
+                    if (!endDateInput) setActiveDateFilter(''); // 종료 날짜도 비어있으면 필터 초기화
+                  }}
                   className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                   title="시작 날짜 지우기"
                 >
@@ -2140,7 +2176,10 @@ function PatientQuestionnaireTable() {
               <input
                 type="date"
                 value={endDateInput}
-                onChange={(e) => setEndDateInput(e.target.value)}
+                onChange={(e) => {
+                  setEndDateInput(e.target.value);
+                  setActiveDateFilter(''); // 날짜 직접 변경 시 활성 필터 초기화
+                }}
                 className="w-full py-2 px-3 border border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white h-[38px]"
                 min={startDateInput || undefined}
                 aria-label="종료 날짜 선택"
@@ -2148,7 +2187,10 @@ function PatientQuestionnaireTable() {
               />
               {endDateInput && (
                 <button
-                  onClick={() => setEndDateInput('')}
+                  onClick={() => {
+                    setEndDateInput('');
+                    if (!startDateInput) setActiveDateFilter(''); // 시작 날짜도 비어있으면 필터 초기화
+                  }}
                   className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                   title="종료 날짜 지우기"
                 >
@@ -2159,7 +2201,11 @@ function PatientQuestionnaireTable() {
             
             <button
               onClick={applyDateFilter}
-              className="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-4 rounded-md h-[38px]"
+              className={`${
+                activeDateFilter === 'custom'
+                  ? 'bg-blue-500 hover:bg-blue-600'
+                  : 'bg-indigo-500 hover:bg-indigo-600'
+              } text-white py-2 px-4 rounded-md h-[38px]`}
               title="설정한 날짜 범위로 검색"
               disabled={!startDateInput && !endDateInput}
             >
@@ -2192,42 +2238,66 @@ function PatientQuestionnaireTable() {
       <div className="flex gap-2 mb-4 mt-1 flex-wrap">
         <button
           onClick={setToday}
-          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          className={`text-xs ${
+            activeDateFilter === 'today' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
           title="오늘 데이터 보기"
         >
           오늘
         </button>
         <button
           onClick={setYesterday}
-          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          className={`text-xs ${
+            activeDateFilter === 'yesterday' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
           title="어제 데이터 보기"
         >
           어제
         </button>
         <button
           onClick={setCurrentWeek}
-          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          className={`text-xs ${
+            activeDateFilter === 'current-week' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
           title="이번 주 데이터 보기"
         >
           이번주
         </button>
         <button
           onClick={setPreviousWeek}
-          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          className={`text-xs ${
+            activeDateFilter === 'previous-week' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
           title="지난 주 데이터 보기"
         >
           지난주
         </button>
         <button
           onClick={setCurrentMonth}
-          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          className={`text-xs ${
+            activeDateFilter === 'current-month' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
           title="이번 달 데이터 보기"
         >
           이번달
         </button>
         <button
           onClick={setPreviousMonth}
-          className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
+          className={`text-xs ${
+            activeDateFilter === 'previous-month' 
+              ? 'bg-blue-500 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+          } px-2 py-1 rounded-md`}
           title="지난 달 데이터 보기"
         >
           지난달
@@ -2239,6 +2309,7 @@ function PatientQuestionnaireTable() {
               setEndDate('');
               setStartDateInput('');
               setEndDateInput('');
+              setActiveDateFilter(''); // 필터 초기화 시 활성 필터도 초기화
             }}
             className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded-md"
             title="모든 날짜 필터 초기화"
@@ -3034,6 +3105,7 @@ const router = createHashRouter(
       <Route path="/" element={<PatientQuestionnaireTable />} />
       <Route path="/consultation/:residentId" element={<PatientConsultation />} />
       <Route path="/dashboard" element={<ConsultationDashboard />} />
+      <Route path="/recent" element={<RecentConsultations />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </>
   )

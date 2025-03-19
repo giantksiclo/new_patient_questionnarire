@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase, getNoCacheQuery } from '../supabaseClient';
 import {
   Chart as ChartJS,
@@ -1078,20 +1078,33 @@ const ConsultationDashboard: React.FC = () => {
   }
 
   return (
-    <div className="p-4 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">상담 통계</h1>
-        <button
-          onClick={() => navigate('/')}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-1"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-          <span>환자 목록으로 돌아가기</span>
-        </button>
+    <div className="container mx-auto p-4">
+      <div className="mb-6 flex justify-between items-center">
+        <h1 className="text-2xl font-bold">샤인치과 상담 통계</h1>
+        <div className="flex gap-2">
+          <Link 
+            to="/"
+            className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
+          >
+            환자목록
+          </Link>
+          <Link 
+            to="/recent"
+            className="p-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 text-sm"
+          >
+            최근상담목록
+          </Link>
+          <button 
+            onClick={() => navigate(-1)}
+            className="p-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-sm"
+          >
+            뒤로가기
+          </button>
+        </div>
       </div>
-
-      {/* 필터 섹션 */}
-      <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
+    
+      <div className="mb-6 p-4 bg-white rounded-lg shadow dark:bg-gray-800">
+        <h2 className="text-lg font-semibold mb-3">필터</h2>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center">
             <label className="text-sm font-medium whitespace-nowrap mr-2">상담자:</label>
@@ -1633,7 +1646,7 @@ const ConsultationDashboard: React.FC = () => {
       {/* 미동의/부분동의 환자 관리 */}
       <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
         <div className="flex items-center mb-4">
-          <h2 className="text-xl font-semibold">미동의/부분동의 환자 관리</h2>
+          <h2 className="text-xl font-semibold">비동의/부분동의 환자 관리</h2>
           <FilterTag />
         </div>
         <div 
@@ -1725,7 +1738,7 @@ const ConsultationDashboard: React.FC = () => {
               ))}
               {consultations.filter(c => c.consultation_result === '비동의' || c.consultation_result === '부분동의').length === 0 && (
                 <tr>
-                  <td colSpan={12} className="p-4 text-center">미동의/부분동의 환자가 없습니다.</td>
+                  <td colSpan={12} className="p-4 text-center">비동의/부분동의 환자가 없습니다.</td>
                 </tr>
               )}
             </tbody>
