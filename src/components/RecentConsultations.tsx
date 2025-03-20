@@ -210,7 +210,7 @@ const RecentConsultations = () => {
     });
     
     // 최대 10개로 제한
-    return sorted.slice(0, 10);
+    return sorted.slice(0, 30);
   }, [consultations, filterText, patientNames, selectedConsultant]);
 
   // 날짜 형식화 함수
@@ -401,7 +401,7 @@ const RecentConsultations = () => {
       {error && <div className="text-red-500 mb-4">{error}</div>}
 
       <div className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-        전체 {consultations.length}개 중 필터링됨 {filteredConsultations.length > 10 ? '10' : filteredConsultations.length}개
+        전체 {consultations.length}개 중 필터링됨 {filteredConsultations.length > 30 ? '30' : filteredConsultations.length}개
       </div>
 
       {loading ? (
@@ -411,7 +411,7 @@ const RecentConsultations = () => {
       ) : (
         <>
           {/* 최근 상담 목록 */}
-          <ConsultationTable consultations={filteredConsultations} title="최근 상담 목록 - 10개" maxCount={10} />
+          <ConsultationTable consultations={filteredConsultations} title="최근 상담 목록 - 30개" maxCount={30} />
           
           {/* 비동의/부분동의/보류 환자 관리 */}
           <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
