@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
+// https://vitejs.dev/config/
 export default defineConfig({
+  base: '/new_patient_questionnarire/',
   plugins: [react()],
-  base: process.env.NODE_ENV === 'production' ? '/new_patient_questionnarire/' : '/'
+  // 기타 설정...
 })
