@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Link } from 'react-router-dom';
-import { ThemeToggle } from './ThemeToggle';
 import moment from 'moment-timezone';
+import Header from './Header';
 
 type ConsultationRecord = {
   id: number;
@@ -341,25 +341,7 @@ const RecentConsultations = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">상담목록</h1>
-        <div className="flex gap-2">
-          <Link 
-            to="/"
-            className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
-          >
-            환자목록
-          </Link>
-          <Link 
-            to="/dashboard"
-            className="p-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm flex items-center gap-1"
-          >
-            <span>상담통계</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 3v6"/><path d="M15 3v6"/><path d="M9 15v6"/><path d="M15 15v6"/><path d="M3 9h6"/><path d="M3 15h6"/><path d="M15 9h6"/><path d="M15 15h6"/></svg>
-          </Link>
-          <ThemeToggle />
-        </div>
-      </div>
+      <Header showTestDataButton={false} />
 
       <div className="mb-6 flex flex-wrap gap-4 items-end">
         <div className="flex-1 min-w-[250px]">

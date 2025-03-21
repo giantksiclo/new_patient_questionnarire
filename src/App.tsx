@@ -1,7 +1,6 @@
 ﻿import { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import { ThemeProvider } from './components/ThemeProvider';
-import { ThemeToggle } from './components/ThemeToggle';
 import { Search, X } from 'lucide-react';
 import { Toast } from './components/Toast';
 import { createHashRouter, RouterProvider, Navigate, Route, createRoutesFromElements, Link } from 'react-router-dom';
@@ -10,15 +9,22 @@ import ConsultationDashboard from './components/ConsultationDashboard';
 import RecentConsultations from './components/RecentConsultations';
 import React, { useRef } from 'react';
 import moment from 'moment-timezone';
+import { AuthProvider } from './utils/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import Login from './components/Login';
+import Signup from './components/Signup';
+import ForgotPassword from './components/ForgotPassword';
+import Header from './components/Header';
 
 // Modal 컴포넌트 직접 정의
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  closeOnOutsideClick?: boolean; // 외부 클릭 시 닫기 여부를 선택할 수 있는 prop 추가
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children }) => {
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, closeOnOutsideClick = true }) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
   // ESC 키를 누르면 모달 닫기
@@ -42,9 +48,9 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children }) => {
     };
   }, [isOpen, onClose]);
 
-  // 모달 외부 클릭 시 닫기
+  // 모달 외부 클릭 시 닫기 - closeOnOutsideClick이 true일 때만 실행
   const handleOutsideClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+    if (closeOnOutsideClick && modalRef.current && !modalRef.current.contains(e.target as Node)) {
       onClose();
     }
   };
@@ -233,6 +239,9 @@ function PatientQuestionnaireTable() {
 
   // 날짜 필터 선택 상태를 추적하는 변수 추가
   const [activeDateFilter, setActiveDateFilter] = useState('');
+  
+  // 내원목적 확장 상태
+  const [expandedVisitReasons, setExpandedVisitReasons] = useState<Record<string, boolean>>({});
 
   // 환자정보 상세보기 함수
   const openDetailModal = (patient: PatientQuestionnaire) => {
@@ -1014,18 +1023,29 @@ function PatientQuestionnaireTable() {
       return (
         <div className="flex flex-col gap-1">
           {areas.map((area, i) => (
-            <span key={i}>{area}</span>
+            <span key={i} className="break-words whitespace-normal">{area}</span>
           ))}
         </div>
       );
     }
+    
+    // 각 항목을 줄바꿈 처리하고 긴 텍스트는 잘라서 표시
+    const processAreaText = (text: string) => {
+      // 30자 이상인 경우 자동 줄바꿈 처리를 위한 클래스 적용
+      if (text.length > 30) {
+        return <span className="break-words whitespace-normal">{text}</span>;
+      }
+      return <span>{text}</span>;
+    };
     
     // 2개 이하일 경우 줄바꿈하여 표시
     if (areas.length <= 2) {
       return (
         <div className="flex flex-col gap-1">
           {areas.map((area, i) => (
-            <span key={i}>{area}</span>
+            <div key={i} className="break-words whitespace-normal">
+              {processAreaText(area)}
+            </div>
           ))}
         </div>
       );
@@ -1049,7 +1069,9 @@ function PatientQuestionnaireTable() {
         >
           <div className="flex flex-col gap-1">
             {areas.map((area, i) => (
-              <span key={i}>{area}</span>
+              <div key={i} className="break-words whitespace-normal">
+                {processAreaText(area)}
+              </div>
             ))}
             <span className="text-blue-500 mt-1">▲ 접기</span>
           </div>
@@ -1070,10 +1092,78 @@ function PatientQuestionnaireTable() {
           title="펼쳐서 모든 불편부위 보기"
         >
           <div className="flex flex-col gap-1">
-            <span>{areas[0]}</span>
-            <span>{areas[1]}{areas.length > 2 ? ` 외 ${areas.length - 2}개 `:''}
+            <div className="break-words whitespace-normal">
+              {processAreaText(areas[0])}
+            </div>
+            <div className="break-words whitespace-normal">
+              {processAreaText(areas[1])}
+              {areas.length > 2 ? ` 외 ${areas.length - 2}개 `:''}
               <span className="text-blue-500 text-sm">▼</span>
-            </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  };
+
+  // 내원목적 표시 함수
+  const renderVisitReason = (value: string | null | undefined, index: number, isModal: boolean = false) => {
+    if (!value) return '-';
+    
+    const reason = value.trim();
+    if (reason.length === 0) return '-';
+    
+    // 모달에서는 항상 전체 내용 표시
+    if (isModal) {
+      return <div className="whitespace-pre-wrap break-words">{reason}</div>;
+    }
+    
+    // 내용이 짧은 경우 그대로 표시
+    if (reason.length <= 15) {
+      return reason;
+    }
+    
+    const isExpanded = expandedVisitReasons[`visit-${index}`] || false;
+    
+    if (isExpanded) {
+      // 펼쳐진 상태: 전체 텍스트 표시
+      return (
+        <div 
+          className="cursor-pointer whitespace-pre-wrap break-words"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpandedVisitReasons(prev => ({
+              ...prev,
+              [`visit-${index}`]: false
+            }));
+          }}
+          title="접기"
+        >
+          <div className="flex flex-col">
+            <span>{reason}</span>
+            <span className="text-blue-500 mt-1">▲ 접기</span>
+          </div>
+        </div>
+      );
+    } else {
+      // 접힌 상태: 첫 부분만 표시
+      const shortReason = reason.length > 15 ? reason.substring(0, 15) + '...' : reason;
+      
+      return (
+        <div 
+          className="cursor-pointer hover:text-blue-500"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpandedVisitReasons(prev => ({
+              ...prev,
+              [`visit-${index}`]: true
+            }));
+          }}
+          title="펼쳐서 전체 내용 보기"
+        >
+          <div className="flex flex-col">
+            <span>{shortReason}</span>
+            <span className="text-blue-500 text-sm">▼ 더보기</span>
           </div>
         </div>
       );
@@ -2055,33 +2145,10 @@ function PatientQuestionnaireTable() {
         />
       )}
       
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">샤인치과 환자 관리프로그램 v1.0</h1>
-        <div className="flex gap-2">
-          <button 
-            onClick={openTestDataModal}
-            className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
-          >
-            구환 데이터 추가
-          </button>
-          <Link 
-            to="/recent"
-            className="p-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 text-sm"
-          >
-            최근상담목록
-          </Link>
-          <Link 
-            to="/dashboard"
-            className="p-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm flex items-center gap-1"
-          >
-            <span>상담통계</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 3v6"/><path d="M15 3v6"/><path d="M9 15v6"/><path d="M15 15v6"/><path d="M3 9h6"/><path d="M3 15h6"/><path d="M15 9h6"/><path d="M15 15h6"/></svg>
-          </Link>
-          <ThemeToggle />
-        </div>
-      </div>
+      <Header openTestDataModal={openTestDataModal} />
       
       {error && <div className="error-message">{error}</div>}
+      
       
       <div className="controls flex flex-wrap gap-2 mb-4 items-end">
         {/* 검색 필터 */}
@@ -2413,11 +2480,13 @@ function PatientQuestionnaireTable() {
                 </th>
                 
                 <th onClick={() => handleSort('visit_reason')}>
-                  내원목적 {sortField === 'visit_reason' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  <div className="w-24">
+                    내원목적 {sortField === 'visit_reason' && (sortOrder === 'asc' ? '↑' : '↓')}
+                  </div>
                 </th>
                 
                 <th onClick={() => handleSort('treatment_area')}>
-                  <div className="w-32">
+                  <div className="w-44">
                     불편부위 {sortField === 'treatment_area' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </div>
                 </th>
@@ -2507,9 +2576,13 @@ function PatientQuestionnaireTable() {
                     
                     <td>{renderBoolean(item.at_clinic)}</td>
                     <td>{item.resident_id || '-'}</td>
-                    <td>{item.visit_reason || '-'}</td>
                     <td className="py-2">
-                      <div className="w-32 leading-snug">
+                      <div className="w-24 leading-snug break-words whitespace-normal">
+                        {renderVisitReason(item.visit_reason, index)}
+                      </div>
+                    </td>
+                    <td className="py-2">
+                      <div className="w-44 leading-snug">
                         {renderTreatmentArea(item.treatment_area, index)}
                       </div>
                     </td>
@@ -2634,7 +2707,7 @@ function PatientQuestionnaireTable() {
       </Modal>
       
       {/* 환자정보 상세보기 모달 */}
-      <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)}>
+      <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} closeOnOutsideClick={false}>
         {selectedPatient && (
           <div className="h-full flex flex-col">
             <div className="flex justify-between items-center p-6 border-b">
@@ -2761,7 +2834,7 @@ function PatientQuestionnaireTable() {
                       className="mt-1 w-full p-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
                     />
                   ) : (
-                    <dd className="mt-1">{selectedPatient.visit_reason || '-'}</dd>
+                    <dd className="mt-1">{renderVisitReason(selectedPatient.visit_reason, 0, true)}</dd>
                   )}
                 </div>
                 
@@ -3072,7 +3145,7 @@ function PatientQuestionnaireTable() {
       </Modal>
 
       {/* 환자 삭제 확인 모달 */}
-      <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteConfirmModal}>
+      <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteConfirmModal} closeOnOutsideClick={false}>
         <div className="p-6">
           <h3 className="text-xl font-bold mb-4">환자 삭제 확인</h3>
           <p className="mb-6">
@@ -3102,10 +3175,41 @@ function PatientQuestionnaireTable() {
 const router = createHashRouter(
   createRoutesFromElements(
     <>
-      <Route path="/" element={<PatientQuestionnaireTable />} />
-      <Route path="/consultation/:residentId" element={<PatientConsultation />} />
-      <Route path="/dashboard" element={<ConsultationDashboard />} />
-      <Route path="/recent" element={<RecentConsultations />} />
+      <Route 
+        path="/" 
+        element={
+          <ProtectedRoute>
+            <PatientQuestionnaireTable />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/consultation/:residentId" 
+        element={
+          <ProtectedRoute>
+            <PatientConsultation />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute>
+            <ConsultationDashboard />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/recent" 
+        element={
+          <ProtectedRoute>
+            <RecentConsultations />
+          </ProtectedRoute>
+        } 
+      />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </>
   )
@@ -3165,8 +3269,10 @@ const AutoRefresh: React.FC = () => {
 function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-      <AutoRefresh />
-      <RouterProvider router={router} />
+      <AuthProvider>
+        <AutoRefresh />
+        <RouterProvider router={router} />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

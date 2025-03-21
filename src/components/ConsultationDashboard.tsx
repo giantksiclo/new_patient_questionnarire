@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase, getNoCacheQuery } from '../supabaseClient';
 import {
   Chart as ChartJS,
@@ -18,6 +18,7 @@ import { Bar, Pie } from 'react-chartjs-2';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import moment from 'moment-timezone';
 import * as dateUtils from '../utils/dateUtils';
+import Header from './Header';
 
 // Chart.js 컴포넌트 등록
 ChartJS.register(
@@ -1058,14 +1059,19 @@ const ConsultationDashboard: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="p-8 text-center">데이터를 불러오는 중...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div className="p-8">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
+      <div className="container mx-auto p-4">
+        <div className="bg-red-100 p-4 rounded-md mb-4">
+          <h2 className="text-red-800 font-semibold">오류 발생</h2>
+          <p className="text-red-700">{error}</p>
         </div>
         <button
           onClick={() => navigate('/')}
@@ -1079,24 +1085,7 @@ const ConsultationDashboard: React.FC = () => {
 
   return (
     <div className="container mx-auto p-4">
-      <div className="mb-6 flex justify-between items-center">
-        <h1 className="text-2xl font-bold">샤인치과 상담 통계</h1>
-        <div className="flex gap-2">
-          <Link 
-            to="/"
-            className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
-          >
-            환자목록
-          </Link>
-          <Link 
-            to="/recent"
-            className="p-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 text-sm"
-          >
-            최근상담목록
-          </Link>
-          {/* 뒤로가기 버튼 제거됨 */}
-        </div>
-      </div>
+      <Header showTestDataButton={false} />
     
       <div className="mb-6 p-4 bg-white rounded-lg shadow dark:bg-gray-800">
         <h2 className="text-lg font-semibold mb-3">필터</h2>
