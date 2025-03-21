@@ -56,7 +56,7 @@ const Login = () => {
       <div className="flex-1 flex justify-center items-center p-4">
         <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
           <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">샤인치과 관리시스템</h1>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">샤인치과 상담 관리시스템</h1>
             <p className="mt-2 text-gray-600 dark:text-gray-400">계정에 로그인하세요</p>
           </div>
           
