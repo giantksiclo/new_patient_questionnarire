@@ -50,6 +50,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     getSession();
 
+    // URL 해시에 토큰이 있는지 확인하고 처리
+    const handleHashChange = async () => {
+      if (window.location.hash && window.location.hash.includes('access_token')) {
+        try {
+          await supabase.auth.getSession();
+          // 페이지 리로드 없이 해시 제거
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (err) {
+          console.error('해시 파라미터 처리 오류:', err);
+        }
+      }
+    };
+
+    handleHashChange();
+
     // 인증 상태 변경 리스너 설정
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -68,6 +83,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: 'https://giantksiclo.github.io/new_patient_questionnarire/#/auth/callback'
+      }
     });
     return { error };
   };
@@ -89,7 +107,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // 비밀번호 재설정 함수
   const resetPassword = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/#/reset-password`,
+      redirectTo: 'https://giantksiclo.github.io/new_patient_questionnarire/#/auth/callback',
     });
     return { error };
   };

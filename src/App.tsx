@@ -15,6 +15,7 @@ import Login from './components/Login';
 import Signup from './components/Signup';
 import ForgotPassword from './components/ForgotPassword';
 import Header from './components/Header';
+import AuthCallback from './components/AuthCallback';
 
 // Modal 컴포넌트 직접 정의
 interface ModalProps {
@@ -3210,6 +3211,10 @@ const router = createHashRouter(
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      
+      {/* 인증 콜백 라우트 추가 */}
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      
       <Route path="*" element={<Navigate to="/" replace />} />
     </>
   )
