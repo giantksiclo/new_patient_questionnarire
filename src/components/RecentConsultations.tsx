@@ -341,7 +341,7 @@ const RecentConsultations = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <Header showTestDataButton={false} />
+      <Header showTestDataButton={false} pageTitle="최근상담목록" />
 
       <div className="mb-6 flex flex-wrap gap-4 items-end">
         <div className="flex-1 min-w-[250px]">

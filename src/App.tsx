@@ -2146,7 +2146,7 @@ function PatientQuestionnaireTable() {
         />
       )}
       
-      <Header openTestDataModal={openTestDataModal} />
+      <Header openTestDataModal={openTestDataModal} pageTitle="환자목록" />
       
       {error && <div className="error-message">{error}</div>}
       

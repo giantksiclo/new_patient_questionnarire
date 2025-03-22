@@ -1085,7 +1085,7 @@ const ConsultationDashboard: React.FC = () => {
 
   return (
     <div className="container mx-auto p-4">
-      <Header showTestDataButton={false} />
+      <Header showTestDataButton={false} pageTitle="상담통계" />
     
       <div className="mb-6 p-4 bg-white rounded-lg shadow dark:bg-gray-800">
         <h2 className="text-lg font-semibold mb-3">필터</h2>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import moment from 'moment';
+import Header from './Header';
 
 interface ConsultationRecord {
   id?: number;
@@ -1376,39 +1377,7 @@ const PatientConsultation = () => {
 
   return (
     <div className="p-4 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">환자 상담 기록</h1>
-        <div className="flex gap-2">
-          <Link
-            to="/"
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-1"
-          >
-            <span>환자목록</span>
-          </Link>
-          {location.state?.fromRecentConsultations ? (
-            <Link
-              to="/recent"
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded flex items-center gap-1"
-            >
-              <span>상담목록으로 돌아가기</span>
-            </Link>
-          ) : (
-            <Link
-              to="/recent"
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded flex items-center gap-1"
-            >
-              <span>최근상담목록</span>
-            </Link>
-          )}
-          <Link
-            to="/dashboard"
-            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded flex items-center gap-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            <span>상담통계</span>
-          </Link>
-        </div>
-      </div>
+      <Header showTestDataButton={false} pageTitle="환자 상담 기록" />
 
       {/* 상담 기록 내역 섹션을 가장 상단으로 이동 */}
       <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md mb-8">
