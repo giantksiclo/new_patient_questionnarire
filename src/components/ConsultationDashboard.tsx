@@ -871,9 +871,69 @@ const ConsultationDashboard: React.FC = () => {
     return labels;
   };
 
+  // 요약 섹션에 사용할 필터 라벨 생성 함수 (상담자 필터 제외)
+  const getSummaryFilterLabel = () => {
+    const labels = [];
+    
+    // 날짜 필터 라벨
+    if (dateRange === 'custom') {
+      if (startDate && endDate) {
+        labels.push(`${startDate} ~ ${endDate}`);
+      }
+    } else {
+      const ranges: Record<DateRange, string> = {
+        today: '오늘',
+        yesterday: '어제',
+        thisWeek: '이번 주',
+        lastWeek: '지난 주',
+        thisMonth: '이번 달',
+        lastMonth: '지난 달',
+        all: '전체 기간',
+        custom: '사용자 지정'
+      };
+      labels.push(ranges[dateRange]);
+    }
+    
+    // 상담자 필터 라벨
+    if (selectedConsultant) {
+      labels.push(`상담자: ${selectedConsultant}`);
+    } else {
+      labels.push("상담자: 전체");
+    }
+    
+    // 진단원장 필터 라벨
+    if (selectedDoctor) {
+      labels.push(`진단원장: ${selectedDoctor}`);
+    }
+    
+    // 내원경로 필터 라벨
+    if (selectedReferralSource) {
+      labels.push(`내원경로: ${selectedReferralSource}`);
+    }
+    
+    return labels;
+  };
+
   // 필터 태그 컴포넌트
   const FilterTag = () => {
     const labels = getFilterLabel();
+    
+    if (labels.length === 0) return null;
+    
+    return (
+      <div className="ml-2 inline-flex gap-1">
+        {labels.map((label, index) => (
+          <span key={index} className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded">
+            {label}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  // 요약 섹션용 필터 태그 컴포넌트 (상담자 필터 제외)
+  const SummaryFilterTag = () => {
+    const labels = getSummaryFilterLabel();
     
     if (labels.length === 0) return null;
     
@@ -1058,6 +1118,12 @@ const ConsultationDashboard: React.FC = () => {
     }
   };
 
+  // consultations에 필터를 적용하는 컴퓨티드 함수 추가
+  const getFilteredConsultations = () => {
+    // 상담자 필터 적용
+    return consultations.filter(c => !selectedConsultant || c.consultant === selectedConsultant);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -1213,21 +1279,21 @@ const ConsultationDashboard: React.FC = () => {
       <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-md mb-6">
         <div className="flex items-center mb-4">
           <h2 className="text-xl font-semibold">전체 통계 요약</h2>
-          <FilterTag />
+          <SummaryFilterTag />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-lg">
             <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300">전체 상담</h3>
-            <p className="text-2xl font-bold">{consultations.length}건</p>
+            <p className="text-2xl font-bold">{getFilteredConsultations().length}건</p>
           </div>
           
           <div className="bg-green-50 dark:bg-green-900/30 p-3 rounded-lg">
             <h3 className="text-sm font-medium text-green-800 dark:text-green-300">동의율</h3>
             <p className="text-2xl font-bold">
               {formatPercent(
-                consultations.length > 0
-                  ? (consultations.filter(c => c.consultation_result === '전체동의' || c.consultation_result === '부분동의').length / 
-                     consultations.filter(c => c.consultation_result !== '보류' && c.consultation_result !== '환불').length) * 100
+                getFilteredConsultations().length > 0
+                  ? (getFilteredConsultations().filter(c => c.consultation_result === '전체동의' || c.consultation_result === '부분동의').length / 
+                     getFilteredConsultations().filter(c => c.consultation_result !== '보류' && c.consultation_result !== '환불').length) * 100
                   : 0
               )}
             </p>
@@ -1237,8 +1303,8 @@ const ConsultationDashboard: React.FC = () => {
             <h3 className="text-sm font-medium text-amber-800 dark:text-amber-300">신환 비율</h3>
             <p className="text-2xl font-bold">
               {formatPercent(
-                consultations.length > 0
-                  ? (consultations.filter(c => c.patient_type === '신환').length / consultations.length) * 100
+                getFilteredConsultations().length > 0
+                  ? (getFilteredConsultations().filter(c => c.patient_type === '신환').length / getFilteredConsultations().length) * 100
                   : 0
               )}
             </p>
@@ -1248,9 +1314,9 @@ const ConsultationDashboard: React.FC = () => {
             <h3 className="text-sm font-medium text-purple-800 dark:text-purple-300">전체동의 비율</h3>
             <p className="text-2xl font-bold">
               {formatPercent(
-                consultations.length > 0
-                  ? (consultations.filter(c => c.consultation_result === '전체동의').length / 
-                     consultations.filter(c => c.consultation_result !== '보류' && c.consultation_result !== '환불').length) * 100
+                getFilteredConsultations().length > 0
+                  ? (getFilteredConsultations().filter(c => c.consultation_result === '전체동의').length / 
+                     getFilteredConsultations().filter(c => c.consultation_result !== '보류' && c.consultation_result !== '환불').length) * 100
                   : 0
               )}
             </p>
@@ -1314,9 +1380,10 @@ const ConsultationDashboard: React.FC = () => {
           </div>
           <div className="space-y-3">
             {['전체동의', '부분동의', '비동의', '보류', '환불'].map(result => {
-              const count = consultations.filter(c => c.consultation_result === result).length;
-              const percentage = consultations.length > 0 
-                ? (count / consultations.length) * 100 
+              const filteredData = getFilteredConsultations();
+              const count = filteredData.filter(c => c.consultation_result === result).length;
+              const percentage = filteredData.length > 0 
+                ? (count / filteredData.length) * 100 
                 : 0;
               
               let bgClass = 'bg-gray-200 dark:bg-gray-700';
@@ -1347,7 +1414,8 @@ const ConsultationDashboard: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                     <div 
-                      className={`${bgClass} h-2.5 rounded-full w-[${percentage}%]`}
+                      className={`${bgClass} h-2.5 rounded-full`}
+                      style={{ width: `${percentage}%` }}
                     ></div>
                   </div>
                 </div>
@@ -1363,9 +1431,10 @@ const ConsultationDashboard: React.FC = () => {
           </div>
           <div className="space-y-3">
             {['신환', '구환'].map(patientType => {
-              const count = consultations.filter(c => c.patient_type === patientType).length;
-              const percentage = consultations.length > 0 
-                ? (count / consultations.length) * 100 
+              const filteredData = getFilteredConsultations();
+              const count = filteredData.filter(c => c.patient_type === patientType).length;
+              const percentage = filteredData.length > 0 
+                ? (count / filteredData.length) * 100 
                 : 0;
               
               const bgClass = patientType === '신환' ? 'bg-blue-500' : 'bg-purple-500';
@@ -1378,7 +1447,8 @@ const ConsultationDashboard: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                     <div 
-                      className={`${bgClass} h-2.5 rounded-full w-[${percentage}%]`}
+                      className={`${bgClass} h-2.5 rounded-full`}
+                      style={{ width: `${percentage}%` }}
                     ></div>
                   </div>
                 </div>
@@ -1392,12 +1462,13 @@ const ConsultationDashboard: React.FC = () => {
               <FilterTag />
             </div>
             <div className="space-y-3">
-              {[...new Set(consultations.map(c => c.doctor))]
+              {[...new Set(getFilteredConsultations().map(c => c.doctor))]
                 .filter(Boolean)
                 .map(doctor => {
-                  const count = consultations.filter(c => c.doctor === doctor).length;
-                  const percentage = consultations.length > 0 
-                    ? (count / consultations.length) * 100 
+                  const filteredData = getFilteredConsultations();
+                  const count = filteredData.filter(c => c.doctor === doctor).length;
+                  const percentage = filteredData.length > 0 
+                    ? (count / filteredData.length) * 100 
                     : 0;
                   
                   return (
@@ -1408,7 +1479,8 @@ const ConsultationDashboard: React.FC = () => {
                       </div>
                       <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                         <div 
-                          className="bg-teal-500 h-2.5 rounded-full w-[${percentage}%]"
+                          className="bg-teal-500 h-2.5 rounded-full"
+                          style={{ width: `${percentage}%` }}
                         ></div>
                       </div>
                     </div>
