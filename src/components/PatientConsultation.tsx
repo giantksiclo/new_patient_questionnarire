@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import moment from 'moment';
 import Header from './Header';
@@ -2283,6 +2283,7 @@ const PatientConsultation = () => {
                     className={`w-full p-2 border border-gray-300 rounded ${!isEditModeEnabled && 'bg-gray-100'}`}
                     required
                     disabled={!isEditModeEnabled}
+                    aria-label="상담 일자"
                   />
                 </div>
 
@@ -2295,6 +2296,7 @@ const PatientConsultation = () => {
                     className={`w-full p-2 border border-gray-300 rounded ${!isEditModeEnabled && 'bg-gray-100'}`}
                     required
                     disabled={!isEditModeEnabled}
+                    aria-label="신환/구환 선택"
                   >
                     <option value="신환">신환</option>
                     <option value="구환">구환</option>
@@ -2310,6 +2312,7 @@ const PatientConsultation = () => {
                     className={`w-full p-2 border border-gray-300 rounded ${!isEditModeEnabled && 'bg-gray-100'}`}
                     required
                     disabled={!isEditModeEnabled}
+                    aria-label="진단원장 선택"
                   >
                     <option value="">선택하세요</option>
                     <option value="공성배">공성배</option>
@@ -2330,6 +2333,7 @@ const PatientConsultation = () => {
                     className={`w-full p-2 border border-gray-300 rounded ${!isEditModeEnabled && 'bg-gray-100'}`}
                     required
                     disabled={!isEditModeEnabled}
+                    aria-label="상담자 선택"
                   >
                     <option value="">선택하세요</option>
                     <option value="김은정">김은정</option>
@@ -2349,6 +2353,7 @@ const PatientConsultation = () => {
                     className={`w-full p-2 border border-gray-300 rounded ${!isEditModeEnabled && 'bg-gray-100'}`}
                     required
                     disabled={!isEditModeEnabled}
+                    aria-label="상담결과 선택"
                   >
                     <option value="전체동의">전체동의</option>
                     <option value="부분동의">부분동의</option>
@@ -2532,6 +2537,7 @@ const PatientConsultation = () => {
                       onChange={handleEditDateChange}
                       className={`w-full p-2 border border-gray-300 rounded ${!isEditModeEnabled && 'bg-gray-100'}`}
                       disabled={!isEditModeEnabled}
+                      aria-label="예약일"
                     />
                   </div>
                   <div>
@@ -2543,6 +2549,7 @@ const PatientConsultation = () => {
                       onChange={handleEditInputChange}
                       className={`w-full p-2 border border-gray-300 rounded ${!isEditModeEnabled && 'bg-gray-100'}`}
                       disabled={!isEditModeEnabled}
+                      aria-label="예약시간"
                     />
                   </div>
                 </div>
@@ -2674,6 +2681,7 @@ const PatientConsultation = () => {
                     onChange={handleEditInputChange}
                     className={`w-full p-2 border border-gray-300 rounded ${!isEditModeEnabled && 'bg-gray-100'}`}
                     disabled={!isEditModeEnabled || consultations[0]?.id !== editingConsultation.id} // 가장 최근 상담 기록이 아니면 비활성화
+                    aria-label="치료진행상황 선택"
                   >
                     <option value="">선택하세요</option>
                     <option value="발치 후 대기">발치 후 대기</option>

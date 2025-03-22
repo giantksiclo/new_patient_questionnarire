@@ -1096,6 +1096,7 @@ const ConsultationDashboard: React.FC = () => {
               value={selectedConsultant}
               onChange={handleConsultantChange}
               className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
+              aria-label="상담자 필터"
             >
               <option value="">전체 상담자</option>
               {consultantStats.map(stat => (
@@ -1112,6 +1113,7 @@ const ConsultationDashboard: React.FC = () => {
               value={selectedDoctor}
               onChange={handleDoctorChange}
               className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
+              aria-label="진단원장 필터"
             >
               <option value="">전체 진단원장</option>
               {allDoctors.length > 0 ? allDoctors.map(stat => (
@@ -1133,6 +1135,7 @@ const ConsultationDashboard: React.FC = () => {
               value={selectedReferralSource}
               onChange={handleReferralSourceChange}
               className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
+              aria-label="내원경로 필터"
             >
               <option value="">전체 내원경로</option>
               {referralSources.map(item => (
@@ -1149,6 +1152,7 @@ const ConsultationDashboard: React.FC = () => {
               value={dateRange}
               onChange={handleDateRangeChange}
               className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-32"
+              aria-label="조회 기간 선택"
             >
               <option value="all">전체 기간</option>
               <option value="today">오늘</option>
@@ -1169,6 +1173,7 @@ const ConsultationDashboard: React.FC = () => {
                 value={startDate}
                 onChange={handleCustomDateChange}
                 className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
+                aria-label="시작 날짜"
               />
               <span className="text-sm">~</span>
               <input
@@ -1177,6 +1182,7 @@ const ConsultationDashboard: React.FC = () => {
                 value={endDate}
                 onChange={handleCustomDateChange}
                 className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700 w-40"
+                aria-label="종료 날짜"
               />
             </div>
           )}
@@ -1341,8 +1347,7 @@ const ConsultationDashboard: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                     <div 
-                      className={`${bgClass} h-2.5 rounded-full`} 
-                      style={{ width: `${percentage}%` }}
+                      className={`${bgClass} h-2.5 rounded-full w-[${percentage}%]`}
                     ></div>
                   </div>
                 </div>
@@ -1373,8 +1378,7 @@ const ConsultationDashboard: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                     <div 
-                      className={`${bgClass} h-2.5 rounded-full`} 
-                      style={{ width: `${percentage}%` }}
+                      className={`${bgClass} h-2.5 rounded-full w-[${percentage}%]`}
                     ></div>
                   </div>
                 </div>
@@ -1404,8 +1408,7 @@ const ConsultationDashboard: React.FC = () => {
                       </div>
                       <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                         <div 
-                          className="bg-teal-500 h-2.5 rounded-full" 
-                          style={{ width: `${percentage}%` }}
+                          className="bg-teal-500 h-2.5 rounded-full w-[${percentage}%]"
                         ></div>
                       </div>
                     </div>
@@ -1635,14 +1638,10 @@ const ConsultationDashboard: React.FC = () => {
         </div>
         <div 
           ref={tableContainerRef}
-          className="overflow-x-auto" 
-          style={{ 
-            maxHeight: '600px', 
-            overflowY: 'auto',
-            cursor: 'grab'
-          }}
+          className="overflow-x-auto max-h-[600px] overflow-y-auto cursor-grab"
           onMouseDown={handleMouseDown}
           onMouseLeave={handleMouseLeave}
+          onMouseUp={handleMouseUp}
         >
           <table className="min-w-full border border-gray-300 dark:border-gray-700">
             <thead>
@@ -1744,6 +1743,7 @@ const ConsultationDashboard: React.FC = () => {
               value={periodType}
               onChange={handlePeriodTypeChange}
               className="p-2 border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-700"
+              aria-label="기간 타입 선택"
             >
               <option value="daily">일별</option>
               <option value="weekly">주별</option>

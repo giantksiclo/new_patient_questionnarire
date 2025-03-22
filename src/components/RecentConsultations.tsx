@@ -361,6 +361,7 @@ const RecentConsultations = () => {
             value={selectedConsultant}
             onChange={(e) => setSelectedConsultant(e.target.value)}
             className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            aria-label="상담자 필터 선택"
           >
             <option value="">모든 상담자</option>
             {consultantList.map(consultant => (
@@ -402,16 +403,11 @@ const RecentConsultations = () => {
             </div>
             <div 
               ref={tableContainerRef}
-              className="overflow-x-auto select-none" 
-              style={{ 
-                maxHeight: '600px', 
-                overflowY: 'auto',
-                cursor: 'grab',
-                userSelect: 'none'
-              }}
+              className="overflow-x-auto select-none max-h-[600px] overflow-y-auto cursor-grab"
               onMouseDown={handleMouseDown}
               onMouseMove={isDragging ? handleMouseMove : undefined}
               onMouseLeave={handleMouseLeave}
+              onMouseUp={handleMouseUp}
             >
               <table className="min-w-full border border-gray-300 dark:border-gray-700">
                 <thead>

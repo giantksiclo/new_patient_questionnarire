@@ -1,0 +1,7 @@
+{
+  "reporter": "v1",
+  "rules": {
+    "select-name": { "enabled": false },
+    "label": { "enabled": false }
+  }
+} 
